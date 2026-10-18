@@ -14,7 +14,7 @@ import {
 } from "@fdd/core";
 import { useTable } from "../lib/hooks";
 
-export type FieldType = "text" | "textarea" | "date" | "datetime" | "select" | "person" | "engagement" | "workstream" | "toggles";
+export type FieldType = "text" | "textarea" | "date" | "datetime" | "select" | "person" | "engagement" | "workstream" | "toggles" | "hours" | "task";
 
 export interface FieldDef {
   name: string;
@@ -111,6 +111,15 @@ export const formDefs: Record<TableName, FieldDef[]> = {
     { name: "title", label: "Remind me to", type: "text", required: true },
     { name: "fireAt", label: "When", type: "datetime", required: true },
   ],
+  timeEntries: [
+    { name: "minutes", label: "Hours", type: "hours", required: true, half: true },
+    { name: "date", label: "Date", type: "date", required: true, half: true },
+    { name: "engagementId", label: "Engagement", type: "engagement" },
+    { name: "taskId", label: "Task", type: "task" },
+    { name: "note", label: "Note", type: "text", placeholder: "What you worked on" },
+  ],
+  days: [],
+  achievements: [],
 };
 
 export type FormValues = Record<string, string | string[]>;
@@ -142,6 +151,7 @@ export function RecordForm({
   const people = useTable("people");
   const engagements = useTable("engagements");
   const workstreams = useTable("workstreams");
+  const tasks = useTable("tasks");
   const visible = fields.filter((f) => !(f.createOnly && mode === "edit"));
 
   const wsOptions = useMemo(
@@ -157,6 +167,21 @@ export function RecordForm({
         return <textarea {...common} rows={3} value={v} placeholder={f.placeholder} onChange={(e) => set(f.name, e.target.value)} />;
       case "date":
         return <input {...common} type="date" value={v} onChange={(e) => set(f.name, e.target.value)} />;
+      case "hours":
+        return <input {...common} type="number" min={0.05} max={24} step={0.05} inputMode="decimal" value={v} placeholder="1.5" onChange={(e) => set(f.name, e.target.value)} />;
+      case "task":
+        return (
+          <select {...common} value={v} onChange={(e) => set(f.name, e.target.value)}>
+            <option value="">None</option>
+            {(tasks ?? [])
+              .filter((t) => (t.status !== "done" || t.id === v) && (!values.engagementId || t.engagementId === values.engagementId))
+              .map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title}
+                </option>
+              ))}
+          </select>
+        );
       case "datetime":
         return <input {...common} type="datetime-local" value={v} onChange={(e) => set(f.name, e.target.value)} />;
       case "select":
@@ -269,7 +294,12 @@ export function valuesToPatch(fields: FieldDef[], values: FormValues, mode: "cre
       if (mode === "edit") out[f.name] = null;
       continue;
     }
-    out[f.name] = f.type === "datetime" ? new Date(raw as string).toISOString() : raw;
+    out[f.name] =
+      f.type === "datetime"
+        ? new Date(raw as string).toISOString()
+        : f.type === "hours"
+          ? Math.max(1, Math.round(Number(raw) * 60))
+          : raw;
   }
   return out;
 }

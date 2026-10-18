@@ -19,6 +19,8 @@ import {
 } from "./actions";
 import { todayISO } from "./dates";
 import { computeToday, titleOf } from "./today";
+import { BADGES, chaseStreak, levelFor, pointEvents, ringFor, ringStreak } from "./game";
+import { periodReport, shiftWeek, timesheet, timesheetText, weekDays, weekStart } from "./time";
 import { loadSnapshot, type Store } from "./store";
 import {
   engagementStatuses,
@@ -29,6 +31,7 @@ import {
   reviewPointStatuses,
   tableNames,
   taskStatuses,
+  workTables,
   wpStatuses,
   type AnyEntity,
   type Engagement,
@@ -155,8 +158,7 @@ export const tools = [
       const q = norm(query);
       const out: Record<string, unknown>[] = [];
       const doneStates = new Set(["done", "final", "cleared", "received", "na", "closed"]);
-      for (const table of tables ?? tableNames) {
-        if (table === "alerts" && !tables) continue;
+      for (const table of tables ?? workTables) {
         for (const r of await ctx.store.list(table)) {
           if (r.deleted) continue;
           const status = (r as { status?: string }).status;
@@ -444,6 +446,60 @@ export const tools = [
       const item = itemId ? await findAnywhere(ctx.store, itemId) : null;
       const r = await create(ctx, "alerts", { title, fireAt: when.toISOString(), itemTable: item?.table, itemId: item?.record.id });
       return { created: brief("alerts", r.record) };
+    },
+  }),
+
+  tool({
+    name: "log_time",
+    kind: "write",
+    description: "Log time worked, against an engagement and optionally a task. Use for timesheet hours.",
+    input: z.object({
+      minutes: z.number().int().min(1).max(1440).describe("Duration in minutes (e.g. 90 for 1.5h)"),
+      date: optDate.describe("Defaults to today"),
+      engagement: z.string().optional().describe("Engagement id or name; omit for admin/other time"),
+      taskId: z.string().optional(),
+      note: z.string().optional(),
+    }),
+    async run(ctx, { engagement, date, ...rest }) {
+      const engagementId = engagement ? (await resolveEngagement(ctx.store, engagement)).id : undefined;
+      const r = await create(ctx, "timeEntries", { ...rest, engagementId, date: date ?? todayISO(ctx.now?.()), source: "chat" });
+      return { created: brief("timeEntries", r.record) };
+    },
+  }),
+
+  tool({
+    name: "weekly_report",
+    kind: "read",
+    description: "Summary for a week: items finished, chases, focus sessions, hours by engagement, a timesheet grid, longest-waiting items, overdue count.",
+    input: z.object({ weekOf: optDate.describe("Any date in the week; defaults to this week") }),
+    async run(ctx, { weekOf }) {
+      const snap = await loadSnapshot(ctx.store);
+      const settings = await ctx.store.getSettings();
+      const today = todayISO(ctx.now?.());
+      const start = weekStart(weekOf ?? today);
+      const report = periodReport(snap, start, shiftWeek(start, 1) <= today ? weekDays(start)[6] : today, today);
+      return { ...report, timesheet: timesheetText(timesheet(snap.timeEntries, snap.engagements, start, settings.timeIncrement)) };
+    },
+  }),
+
+  tool({
+    name: "get_stats",
+    kind: "read",
+    description: "Gamification stats: points, level, today's ring progress, streaks and badges earned.",
+    input: z.object({}),
+    async run(ctx) {
+      const snap = await loadSnapshot(ctx.store);
+      const settings = await ctx.store.getSettings();
+      const today = todayISO(ctx.now?.());
+      const points = pointEvents(snap).reduce((a, e) => a + e.points, 0);
+      const ring = ringFor(snap, today, settings);
+      return {
+        level: levelFor(points),
+        ring: { closed: ring.closed, due: ring.due, chases: ring.chases, focus: ring.focus },
+        streak: ringStreak(snap.days, today, settings),
+        noOverdueChasesStreak: chaseStreak(snap.days, today, settings),
+        badges: snap.achievements.map((a) => ({ ...BADGES.find((b) => b.id === a.badge), earnedAt: a.earnedAt, earned: undefined })),
+      };
     },
   }),
 

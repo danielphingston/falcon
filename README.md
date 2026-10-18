@@ -2,7 +2,7 @@
 
 A personal PWA for a CA in Financial Due Diligence: engagements, work papers, review points, IRLs, follow-ups and reminders. It works offline and keeps its data on the device. See [PLAN.md](PLAN.md) for the full roadmap.
 
-**Status:** Phase 0 + Phase 1 done (local-only tracking). Phases 2+ add time/focus, gamification, Google sync/calendar, Gemini chat and the Claude connector.
+**Status:** Phases 0–2 done: local-only tracking, focus timer, timesheet, reports and light gamification (daily ring, streaks, levels, badges, weekly recap). Next phases add Google sync/calendar, Gemini chat and the Claude connector.
 
 ## Run it
 

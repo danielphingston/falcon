@@ -5,6 +5,8 @@ import {
   chaseEmail,
   create,
   createInfoRequest,
+  formatMinutes,
+  weekStart,
   irlHtml,
   irlRows,
   irlText,
@@ -19,7 +21,7 @@ import { Icon } from "../components/Icon";
 import { FollowUpRow, IrlRow, ReviewPointRow, TaskRow, WorkpaperRow, useLookups } from "../components/rows";
 import { QuickAdd } from "../components/QuickAdd";
 import { TLink, useTNavigate } from "../components/TLink";
-import { AnimatedList, EmptyState, Pill, Segmented, statusTone } from "../components/ui";
+import { AnimatedList, EmptyState, ListItem, Pill, Segmented, statusTone } from "../components/ui";
 import { act } from "../lib/act";
 import { useSettings, useSnapshot, useToday } from "../lib/hooks";
 import { toast } from "../lib/toast";
@@ -32,6 +34,7 @@ const tabs = [
   { id: "points", label: "Review points" },
   { id: "irl", label: "IRL" },
   { id: "followups", label: "Follow-ups" },
+  { id: "time", label: "Time" },
 ] as const;
 type TabId = (typeof tabs)[number]["id"];
 
@@ -95,6 +98,7 @@ export function EngagementPage() {
           {active === "points" && <PointsTab snap={snap} id={e.id} />}
           {active === "irl" && <IrlTab snap={snap} id={e.id} />}
           {active === "followups" && <FollowUpsTab snap={snap} id={e.id} />}
+          {active === "time" && <TimeTab snap={snap} id={e.id} />}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -392,6 +396,50 @@ function IrlTab({ snap, id }: TabProps) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function TimeTab({ snap, id }: TabProps) {
+  const today = useToday();
+  const entries = snap.timeEntries.filter((e) => e.engagementId === id).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+  const total = entries.reduce((a, e) => a + e.minutes, 0);
+  const week = entries.filter((e) => e.date >= weekStart(today)).reduce((a, e) => a + e.minutes, 0);
+  const tasks = new Map(snap.tasks.map((t) => [t.id, t.title]));
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-3 gap-3">
+        <div className="card p-3 text-center">
+          <p className="text-xl font-bold">{formatMinutes(week)}</p>
+          <p className="text-xs muted">This week</p>
+        </div>
+        <div className="card p-3 text-center">
+          <p className="text-xl font-bold">{formatMinutes(total)}</p>
+          <p className="text-xs muted">All time</p>
+        </div>
+        <div className="card p-3 text-center">
+          <p className="text-xl font-bold">{entries.filter((e) => e.focus).length}</p>
+          <p className="text-xs muted">Focus sessions</p>
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <button className="btn btn-primary" onClick={() => openEditor({ table: "timeEntries", defaults: { engagementId: id, date: today } })}>
+          <Icon name="plus" size={16} /> Log time
+        </button>
+      </div>
+      {entries.length ? (
+        <AnimatedList>
+          {entries.map((e) => (
+            <ListItem key={e.id} id={e.id} onClick={() => openEditor({ table: "timeEntries", id: e.id })}>
+              <span className="w-16 shrink-0 text-xs muted">{relativeDay(e.date, today)}</span>
+              <p className="min-w-0 flex-1 truncate text-[15px]">{e.note || (e.taskId && tasks.get(e.taskId)) || (e.focus ? "Focus session" : "Time entry")}</p>
+              <span className="text-sm font-semibold">{formatMinutes(e.minutes)}</span>
+            </ListItem>
+          ))}
+        </AnimatedList>
+      ) : (
+        <EmptyState icon="clock" title="No time logged" hint="Start a focus session from Time & focus, or log time here." />
+      )}
     </div>
   );
 }

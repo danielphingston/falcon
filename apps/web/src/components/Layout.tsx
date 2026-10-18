@@ -1,13 +1,17 @@
-import { motion, MotionConfig } from "motion/react";
+import { AnimatePresence, motion, MotionConfig } from "motion/react";
 import { useEffect } from "react";
 import { Outlet, useLocation } from "react-router";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { update } from "@fdd/core";
 import { db, requestPersistence, store } from "../db";
 import { setNavDirection } from "../lib/act";
-import { useSettings } from "../lib/hooks";
+import { celebrate } from "../lib/confetti";
+import { useGameEngine } from "../lib/game";
+import { useSettings, useSnapshot, useToday } from "../lib/hooks";
+import { completeTimer, mmss, remainingMs, useTimer } from "../lib/timer";
 import { toast } from "../lib/toast";
 import { EditorHost, openEditor } from "./Editor";
+import { LevelUpOverlay } from "./LevelUp";
 import { Icon, type IconName } from "./Icon";
 import { TLink } from "./TLink";
 import { Toaster } from "./ui";
@@ -17,16 +21,24 @@ const nav: { to: string; label: string; icon: IconName }[] = [
   { to: "/engagements", label: "Engagements", icon: "briefcase" },
   { to: "/followups", label: "Follow-ups", icon: "inbox" },
   { to: "/review", label: "Review", icon: "review" },
+  { to: "/time", label: "Time & focus", icon: "clock" },
+  { to: "/reports", label: "Reports", icon: "flag" },
+  { to: "/progress", label: "Progress", icon: "sparkles" },
   { to: "/people", label: "People", icon: "users" },
   { to: "/settings", label: "Settings", icon: "settings" },
 ];
+const moreRoutes = ["/more", "/time", "/reports", "/progress", "/people", "/settings"];
 
 const isActive = (path: string, to: string) => (to === "/" ? path === "/" : path.startsWith(to));
 
 export function Layout() {
   const { pathname } = useLocation();
   const settings = useSettings();
+  const snap = useSnapshot();
+  const today = useToday();
   useTheme(settings.theme, settings.motion);
+  useGameEngine(snap, today, settings);
+  useTimerWatcher();
   useAlerts();
   useUpdatePrompt();
   useShortcuts();
@@ -75,7 +87,7 @@ export function Layout() {
             {nav.slice(0, 4).map((n) => (
               <TabLink key={n.to} {...n} active={isActive(pathname, n.to)} />
             ))}
-            <TabLink to="/settings" label="More" icon="more" active={pathname.startsWith("/settings") || pathname.startsWith("/people")} />
+            <TabLink to="/more" label="More" icon="more" active={moreRoutes.some((r) => pathname.startsWith(r))} />
           </div>
         </nav>
         <motion.button
@@ -87,7 +99,9 @@ export function Layout() {
           <Icon name="plus" size={26} />
         </motion.button>
       </div>
+      {!pathname.startsWith("/time") && <TimerPill />}
       <EditorHost />
+      <LevelUpOverlay />
       <Toaster />
     </MotionConfig>
   );
@@ -103,6 +117,55 @@ function TabLink({ to, label, icon, active }: { to: string; label: string; icon:
       {label}
     </TLink>
   );
+}
+
+/** Floating countdown shown while a focus session runs; tap to open the Time page. */
+function TimerPill() {
+  const { timer, now } = useTimer();
+  return (
+    <AnimatePresence>
+      {timer && (
+        <motion.div
+          initial={{ y: 40, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: 40, opacity: 0 }}
+          className="fixed bottom-[calc(env(safe-area-inset-bottom)+5rem)] left-4 z-40 md:bottom-6 md:left-64"
+        >
+          <TLink to="/time" className="flex items-center gap-2.5 rounded-full bg-slate-900 py-2 pl-2 pr-4 text-white shadow-xl dark:bg-slate-100 dark:text-slate-900">
+            <span className="relative grid size-7 place-items-center rounded-full bg-brand-600 text-white">
+              {!timer.pausedAt && <span className="absolute inset-0 animate-ping rounded-full bg-brand-500 opacity-40" />}
+              <Icon name="clock" size={15} className="relative" />
+            </span>
+            <span className="font-semibold tabular-nums">{mmss(remainingMs(timer, now))}</span>
+            <span className="max-w-36 truncate text-sm opacity-75">{timer.pausedAt ? "Paused" : timer.label || "Focus"}</span>
+          </TLink>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/** Logs the session when the countdown ends, including one that ended while the app was closed. */
+function useTimerWatcher() {
+  const { timer, now } = useTimer();
+  useEffect(() => {
+    if (!timer || timer.pausedAt || remainingMs(timer, now) > 0) return;
+    void (async () => {
+      const done = await completeTimer();
+      if (!done) return;
+      void celebrate("small");
+      if ("Notification" in window && Notification.permission === "granted") {
+        try {
+          const reg = await navigator.serviceWorker?.getRegistration();
+          const body = `Focus session done: ${timer.durationMin} min${timer.label ? ` on ${timer.label}` : ""}. Take a short break.`;
+          if (reg) await reg.showNotification("FDD Tracker", { body, tag: "focus" });
+          else new Notification("FDD Tracker", { body, tag: "focus" });
+        } catch {
+          /* toast already shown */
+        }
+      }
+    })();
+  }, [timer, now]);
 }
 
 function useTheme(theme: "system" | "light" | "dark", motionOn: boolean) {

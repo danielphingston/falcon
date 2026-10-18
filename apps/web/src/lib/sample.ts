@@ -74,4 +74,21 @@ export async function loadSampleData(ctx: Ctx) {
   await create(ctx, "tasks", { title: "Send Heron IRL v1 to client", engagementId: heron.id, due: ago(1) });
   await create(ctx, "tasks", { title: "Reconcile debt schedule to TB", engagementId: falcon.id, assigneeId: arjun.id, due: ahead(1) });
   await create(ctx, "tasks", { title: "Book timesheet for last week", due: t });
+
+  // Time over the last ~10 days, including focus sessions.
+  const log: [number, string | undefined, number, string, boolean][] = [
+    [9, falcon.id, 240, "QoE adjustments", false],
+    [8, falcon.id, 50, "EBITDA bridge", true],
+    [8, falcon.id, 180, "Data room review", false],
+    [7, falcon.id, 25, "NWC peg review", true],
+    [7, undefined, 60, "Team meeting / admin", false],
+    [6, falcon.id, 300, "Net debt workings", false],
+    [3, heron.id, 120, "Heron kick-off and IRL", false],
+    [2, falcon.id, 50, "Review A.1 points", true],
+    [2, heron.id, 90, "Customer revenue analysis", false],
+    [1, falcon.id, 25, "Draft report outline", true],
+    [1, falcon.id, 210, "NWC review", false],
+  ];
+  for (const [daysAgo, engagementId, minutes, note, focus] of log)
+    await create(ctx, "timeEntries", { date: ago(daysAgo), engagementId, minutes, note, focus, source: focus ? "timer" : "manual" });
 }

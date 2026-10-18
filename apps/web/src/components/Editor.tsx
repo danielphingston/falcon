@@ -76,6 +76,9 @@ const nouns: Record<TableName, string> = {
   followUps: "follow-up",
   people: "contact",
   alerts: "reminder",
+  timeEntries: "time entry",
+  days: "day",
+  achievements: "badge",
 };
 
 function recordToValues(table: TableName, r: Record<string, unknown> | null | undefined): FormValues {
@@ -84,6 +87,7 @@ function recordToValues(table: TableName, r: Record<string, unknown> | null | un
     const v = r?.[f.name];
     if (f.type === "toggles") out[f.name] = (v as string[]) ?? [...defaultWorkstreams];
     else if (f.type === "datetime") out[f.name] = typeof v === "string" ? toLocalInput(v) : "";
+    else if (f.type === "hours") out[f.name] = typeof v === "number" ? String(Math.round((v / 60) * 100) / 100) : "";
     else out[f.name] = v === undefined || v === null ? "" : String(v);
   }
   // Sensible defaults for selects so the form shows what will be saved.
@@ -93,6 +97,7 @@ function recordToValues(table: TableName, r: Record<string, unknown> | null | un
         { status: f.options[0].value, priority: "normal", side: "buy", myRole: "preparer", role: "other", type: "other" }[f.name] ??
         f.options[0].value;
   if (table === "infoRequests" && !out.requestedOn) out.requestedOn = todayISO();
+  if (table === "timeEntries" && !out.date) out.date = todayISO();
   return out;
 }
 
@@ -121,11 +126,9 @@ function Editor({ entry }: { entry: Entry }) {
         close();
       }
     } else {
+      // Completion timestamps (completedAt, finalAt, …) are stamped by core.
       const p = patch as Record<string, unknown>;
       const before = record as Record<string, unknown>;
-      if (t === "tasks" && p.status === "done" && before.status !== "done") p.completedAt = new Date().toISOString();
-      if (t === "tasks" && p.status && p.status !== "done") p.completedAt = null;
-      if (t === "reviewPoints" && p.status === "cleared" && before.status !== "cleared") p.clearedAt = new Date().toISOString();
       if (t === "alerts" && p.fireAt !== before.fireAt) p.fired = false;
       const res = await act("Saved", (ctx) => update(ctx, t, entry.id!, p as never));
       if (res) close();

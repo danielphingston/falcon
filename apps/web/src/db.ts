@@ -30,6 +30,11 @@ class FddDB extends Dexie {
       changes: "id, seq, batchId",
       meta: "key",
     });
+    this.version(2).stores({
+      timeEntries: "id, date, engagementId",
+      days: "id, date",
+      achievements: "id, badge",
+    });
   }
 }
 

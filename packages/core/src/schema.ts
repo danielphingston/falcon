@@ -40,6 +40,8 @@ export const engagementFields = z.object({
   timesheetCode: z.string().optional(),
   color: z.string().optional(),
   notes: z.string().optional(),
+  /** Set automatically when the engagement is closed. */
+  closedAt: isoDateTime.optional(),
 });
 
 // ---------- Workstreams ----------
@@ -88,6 +90,8 @@ export const workpaperFields = z.object({
   status: z.enum(wpStatuses).default("not_started"),
   due: isoDate.optional(),
   notes: z.string().optional(),
+  /** Set automatically when the WP reaches "final". */
+  finalAt: isoDateTime.optional(),
 });
 
 // ---------- Review points ----------
@@ -115,6 +119,8 @@ export const infoRequestFields = z.object({
   chaseLog: z.array(isoDate).default([]),
   nextChaseOn: isoDate.optional(),
   notes: z.string().optional(),
+  /** Set automatically when the item becomes received / n.a. */
+  receivedAt: isoDateTime.optional(),
 });
 
 // ---------- Follow-ups ----------
@@ -129,6 +135,8 @@ export const followUpFields = z.object({
   nudgeLog: z.array(isoDate).default([]),
   status: z.enum(["waiting", "done"]).default("waiting"),
   notes: z.string().optional(),
+  /** Set automatically when the follow-up is closed. */
+  doneAt: isoDateTime.optional(),
 });
 
 // ---------- Alerts ----------
@@ -138,6 +146,32 @@ export const alertFields = z.object({
   itemTable: z.string().optional(),
   itemId: z.string().optional(),
   fired: z.boolean().default(false),
+});
+
+// ---------- Time ----------
+export const timeEntryFields = z.object({
+  date: isoDate,
+  minutes: z.number().int().min(1).max(24 * 60),
+  engagementId: z.string().optional(),
+  taskId: z.string().optional(),
+  note: z.string().optional(),
+  source: z.enum(["timer", "manual", "chat"]).default("manual"),
+  /** A completed focus session (counts toward the daily ring). */
+  focus: z.boolean().default(false),
+});
+
+// ---------- Gamification (system-written, not undoable) ----------
+/** One per calendar day the app was used; id is the date. */
+export const dayFields = z.object({
+  date: isoDate,
+  ringClosed: z.boolean().default(false),
+  closedAt: isoDateTime.optional(),
+  /** Chase items left overdue at the last check that day. */
+  overdueChases: z.number().int().min(0).default(0),
+});
+export const achievementFields = z.object({
+  badge: z.string(),
+  earnedAt: isoDateTime,
 });
 
 export const fieldSchemas = {
@@ -150,6 +184,9 @@ export const fieldSchemas = {
   infoRequests: infoRequestFields,
   followUps: followUpFields,
   alerts: alertFields,
+  timeEntries: timeEntryFields,
+  days: dayFields,
+  achievements: achievementFields,
 } as const;
 
 export type TableName = keyof typeof fieldSchemas;
@@ -165,6 +202,9 @@ export const entitySchemas = {
   infoRequests: infoRequestFields.extend(base),
   followUps: followUpFields.extend(base),
   alerts: alertFields.extend(base),
+  timeEntries: timeEntryFields.extend(base),
+  days: dayFields.extend(base),
+  achievements: achievementFields.extend(base),
 } as const;
 
 export type EntityMap = { [K in TableName]: z.output<(typeof entitySchemas)[K]> };
@@ -181,6 +221,22 @@ export type ReviewPoint = EntityMap["reviewPoints"];
 export type InfoRequest = EntityMap["infoRequests"];
 export type FollowUp = EntityMap["followUps"];
 export type Alert = EntityMap["alerts"];
+export type TimeEntry = EntityMap["timeEntries"];
+export type DayRecord = EntityMap["days"];
+export type Achievement = EntityMap["achievements"];
+
+/** Tables holding the user's work (excludes system-written gamification state). */
+export const workTables = [
+  "people",
+  "engagements",
+  "workstreams",
+  "tasks",
+  "workpapers",
+  "reviewPoints",
+  "infoRequests",
+  "followUps",
+  "timeEntries",
+] as const satisfies readonly TableName[];
 
 /** One entry per record change; powers Undo (and later, points). */
 export interface Change {
@@ -214,6 +270,14 @@ export const settingsSchema = z.object({
   confetti: z.boolean().default(true),
   theme: z.enum(["system", "light", "dark"]).default("system"),
   myName: z.string().default("Me"),
+  gamification: z.boolean().default(true),
+  /** Focus sessions per day for the daily ring. */
+  focusTarget: z.number().int().min(0).max(12).default(3),
+  focusMinutes: z.number().int().min(5).max(180).default(25),
+  /** Timesheet rounding, in hours. */
+  timeIncrement: z.number().min(0.05).max(1).default(0.25),
+  /** ISO week (e.g. 2026-W43) whose recap was dismissed. */
+  recapDismissed: z.string().default(""),
 });
 export type Settings = z.output<typeof settingsSchema>;
 export const defaultSettings = (): Settings => settingsSchema.parse({});

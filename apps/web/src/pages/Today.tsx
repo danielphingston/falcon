@@ -1,6 +1,10 @@
 import { format, parseISO } from "date-fns";
 import { motion } from "motion/react";
-import { computeToday, logChase, type DueItem } from "@fdd/core";
+import { BADGES, computeToday, formatMinutes, isoWeekKey, logChase, shiftWeek, weekStart, weeklyRecap, type DueItem } from "@fdd/core";
+import { DailyRing, RingLegend } from "../components/Ring";
+import { TLink } from "../components/TLink";
+import { saveSettings } from "../db";
+import { gameView } from "../lib/game";
 import { openEditor } from "../components/Editor";
 import { Icon } from "../components/Icon";
 import { QuickAdd } from "../components/QuickAdd";
@@ -59,6 +63,18 @@ export function TodayPage() {
           <Stat n={v.doneToday.length} label="done today" tone="text-emerald-600" />
         </div>
       </motion.header>
+
+      {settings.gamification && !firstRun && (
+        <motion.div variants={rise}>
+          <GameCard />
+        </motion.div>
+      )}
+
+      {settings.gamification && !firstRun && (
+        <motion.div variants={rise}>
+          <RecapCard />
+        </motion.div>
+      )}
 
       <motion.div variants={rise}>
         <QuickAdd autoFocus={false} />
@@ -186,6 +202,64 @@ export function TodayPage() {
             </AnimatedList>
           </Section>
         </motion.div>
+      )}
+    </motion.div>
+  );
+}
+
+function GameCard() {
+  const snap = useSnapshot();
+  const today = useToday();
+  const settings = useSettings();
+  if (!snap) return null;
+  const v = gameView(snap, today, settings);
+  return (
+    <TLink to="/progress" className="card flex items-center gap-4 p-4 transition-shadow hover:shadow-lg hover:shadow-slate-900/5">
+      <DailyRing ring={v.ring} size={84} />
+      <div className="min-w-0 flex-1">
+        <RingLegend ring={v.ring} focusTarget={settings.focusTarget} />
+      </div>
+      <div className="hidden shrink-0 text-right sm:block">
+        <p className="text-2xl font-bold">🔥 {v.streak.current}</p>
+        <p className="text-xs muted">day streak</p>
+        <p className="mt-1 text-xs font-semibold text-brand-600">{v.level.name}</p>
+      </div>
+    </TLink>
+  );
+}
+
+/** Shown Monday–Wednesday until dismissed: how last week went. */
+function RecapCard() {
+  const snap = useSnapshot();
+  const today = useToday();
+  const settings = useSettings();
+  if (!snap) return null;
+  const week = isoWeekKey(today);
+  const dow = parseISO(today).getDay();
+  if (settings.recapDismissed === week || dow === 0 || dow > 3) return null;
+  const r = weeklyRecap(snap, snap.days, shiftWeek(weekStart(today), -1), today);
+  if (!r.points && !r.itemsCleared && !r.report.minutes) return null;
+  return (
+    <motion.div layout className="card relative overflow-hidden p-5">
+      <div className="absolute -right-6 -top-6 size-28 rounded-full bg-brand-500/10" />
+      <button className="btn btn-ghost btn-sm absolute right-2 top-2" onClick={() => void saveSettings({ recapDismissed: week })} aria-label="Dismiss recap">
+        <Icon name="x" size={16} />
+      </button>
+      <p className="text-xs font-semibold uppercase tracking-widest text-brand-600">Last week</p>
+      <p className="mt-1 text-lg font-bold">
+        {r.points} points · {r.itemsCleared} items cleared
+      </p>
+      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+        <span>⏱ {formatMinutes(r.report.minutes)} logged</span>
+        <span>📨 {r.report.chases} chases</span>
+        <span>🎧 {r.report.focusSessions} focus sessions</span>
+        <span>✅ ring closed {r.ringDays}×</span>
+        {r.bestDay && <span>⭐ best day {format(parseISO(r.bestDay.date), "EEE")} ({r.bestDay.points} pts)</span>}
+      </div>
+      {r.badges.length > 0 && (
+        <p className="mt-2 text-sm">
+          Badges: {r.badges.map((b) => BADGES.find((x) => x.id === b.badge)?.emoji).join(" ")}
+        </p>
       )}
     </motion.div>
   );

@@ -1,7 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import { BACKUP_VERSION, mergeRecords, parseBackup, tableNames, type Backup, type Settings } from "@fdd/core";
 import { Icon } from "../components/Icon";
-import { TLink } from "../components/TLink";
 import { Segmented } from "../components/ui";
 import { db, getSettings, saveSettings } from "../db";
 import { act } from "../lib/act";
@@ -53,12 +52,6 @@ export function SettingsPage() {
         <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Settings</h1>
         <p className="text-sm muted">Everything is stored on this device. Google sync and AI chat come in later phases.</p>
       </header>
-
-      <TLink to="/people" className="card flex items-center gap-3 p-4 md:hidden">
-        <Icon name="users" />
-        <span className="flex-1 font-medium">People</span>
-        <Icon name="chevron" size={18} className="muted" />
-      </TLink>
 
       <Group title="You">
         <Row label="Your name" hint="Used in greetings and chase emails">
@@ -124,6 +117,30 @@ export function SettingsPage() {
         </Row>
       </Group>
 
+      <Group title="Time & progress">
+        <Row label="Gamification" hint="Daily ring, streaks, levels and badges">
+          <Switch on={s.gamification} onChange={(gamification) => set({ gamification })} />
+        </Row>
+        <Row label="Focus sessions per day" hint="Target for the green ring">
+          <input type="number" min={0} max={12} className="input w-20" defaultValue={s.focusTarget} onBlur={(e) => set({ focusTarget: Math.min(12, Math.max(0, Number(e.target.value) || 0)) })} />
+        </Row>
+        <Row label="Default focus length" hint="Minutes">
+          <input type="number" min={5} max={180} className="input w-20" defaultValue={s.focusMinutes} onBlur={(e) => set({ focusMinutes: Math.min(180, Math.max(5, Number(e.target.value) || 25)) })} />
+        </Row>
+        <Row label="Timesheet rounding">
+          <Segmented
+            id="increment"
+            value={String(s.timeIncrement)}
+            onChange={(v) => set({ timeIncrement: Number(v) })}
+            options={[
+              { value: "0.1", label: "0.1h" },
+              { value: "0.25", label: "¼h" },
+              { value: "0.5", label: "½h" },
+            ]}
+          />
+        </Row>
+      </Group>
+
       <Group title="Reminders">
         <Row label="Notifications" hint="Reminders pop up while the app is open. Calendar alerts come with Google sync.">
           {perm === "granted" ? (
@@ -178,7 +195,7 @@ export function SettingsPage() {
           </button>
         </Row>
       </Group>
-      <p className="pb-4 text-center text-xs muted">FDD Tracker · Phase 1 · data stays on this device</p>
+      <p className="pb-4 text-center text-xs muted">FDD Tracker · Phase 2 · data stays on this device</p>
     </div>
   );
 }

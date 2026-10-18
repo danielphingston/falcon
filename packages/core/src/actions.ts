@@ -52,6 +52,24 @@ async function logChange(
   return change;
 }
 
+/** Status that counts as "finished" per table, and the timestamp field recording when. */
+const completion: Partial<Record<TableName, { field: string; done: (r: Record<string, unknown>) => boolean }>> = {
+  tasks: { field: "completedAt", done: (r) => r.status === "done" },
+  workpapers: { field: "finalAt", done: (r) => r.status === "final" },
+  reviewPoints: { field: "clearedAt", done: (r) => r.status === "cleared" },
+  infoRequests: { field: "receivedAt", done: (r) => r.status === "received" || r.status === "na" },
+  followUps: { field: "doneAt", done: (r) => r.status === "done" },
+  engagements: { field: "closedAt", done: (r) => r.status === "closed" },
+};
+
+/** Sets or clears the completion timestamp so reports and points never depend on callers. */
+function stampCompletion(table: TableName, rec: Record<string, unknown>, at: string) {
+  const c = completion[table];
+  if (!c) return;
+  if (c.done(rec)) rec[c.field] ??= at;
+  else delete rec[c.field];
+}
+
 export interface Result<T extends TableName> {
   record: EntityMap[T];
   before: EntityMap[T] | null;
@@ -63,8 +81,9 @@ export async function create<T extends TableName>(
   table: T,
   input: InputMap[T],
 ): Promise<Result<T>> {
-  const fields = fieldSchemas[table].parse(input);
+  const fields = fieldSchemas[table].parse(input) as Record<string, unknown>;
   const at = nowOf(ctx).toISOString();
+  stampCompletion(table, fields, at);
   const record = entitySchemas[table].parse({
     ...fields,
     id: newId(),
@@ -95,6 +114,7 @@ export async function update<T extends TableName>(
   if (!before || before.deleted) throw new NotFoundError(`No ${table} record with id ${id}`);
   const merged: Record<string, unknown> = { ...before, ...stripUndefined(patch) };
   for (const [k, v] of Object.entries(merged)) if (v === null) delete merged[k];
+  stampCompletion(table, merged, nowOf(ctx).toISOString());
   merged.updatedAt = nowOf(ctx).toISOString();
   merged.updatedBy = ctx.by;
   const record = entitySchemas[table].parse(merged) as EntityMap[T];
@@ -187,10 +207,7 @@ export async function logChase(ctx: Ctx, table: "infoRequests" | "followUps", id
 }
 
 export async function setTaskDone(ctx: Ctx, id: string, done: boolean) {
-  return update(ctx, "tasks", id, {
-    status: done ? "done" : "todo",
-    completedAt: done ? nowOf(ctx).toISOString() : null,
-  });
+  return update(ctx, "tasks", id, { status: done ? "done" : "todo" });
 }
 
 /** Creates an IRL item, filling in the first chase date. */
