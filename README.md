@@ -88,7 +88,9 @@ Choose how it signs in under **Settings → AI assistant**:
 2. Under **Google Auth Platform → Data access**, add the scope `.../auth/generative-language.retriever`.
 3. In the app: **Settings → AI assistant → Google**, then **Allow Gemini** (it reconnects Google with the extra permission).
 
-Google documents this OAuth route for Gemini mainly for testing, and the scope may need re-checking if Google changes it. If sign-in gives permission errors, use an API key instead.
+Tested end to end with a real account on 2026-10-18: sign-in, Drive sync, Calendar events and Gemini chat all worked with the scope above. Google documents this OAuth route for Gemini mainly for testing, so if sign-in later gives permission errors, use an API key instead.
+
+When you deploy, add the hosted URL to the OAuth client's **Authorized JavaScript origins**, and set `VITE_GOOGLE_CLIENT_ID` for the build.
 
 **API key (fallback)**
 1. Go to [aistudio.google.com](https://aistudio.google.com) → **Get API key**. Turn on billing for that key's project, so prompts aren't used to improve Google's products.
