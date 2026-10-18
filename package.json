@@ -1,0 +1,15 @@
+{
+  "name": "fdd-tracker",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @fdd/web",
+    "build": "npm run build -w @fdd/web",
+    "preview": "npm run preview -w @fdd/web",
+    "test": "npm test -w @fdd/core",
+    "typecheck": "npm run typecheck -w @fdd/core && npm run typecheck -w @fdd/web"
+  }
+}
