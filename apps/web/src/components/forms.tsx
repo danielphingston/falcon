@@ -14,7 +14,7 @@ import {
 } from "@fdd/core";
 import { useTable } from "../lib/hooks";
 
-export type FieldType = "text" | "textarea" | "date" | "datetime" | "select" | "person" | "people" | "engagement" | "workstream" | "toggles" | "hours" | "task";
+export type FieldType = "text" | "textarea" | "date" | "time" | "minutes" | "datetime" | "select" | "person" | "people" | "engagement" | "workstream" | "toggles" | "hours" | "task";
 
 export interface FieldDef {
   name: string;
@@ -43,6 +43,8 @@ export const formDefs: Record<TableName, FieldDef[]> = {
     { name: "engagementId", label: "Engagement", type: "engagement" },
     { name: "due", label: "Due", type: "date", half: true },
     { name: "priority", label: "Priority", type: "select", options: opts(priorities, { low: "Low", normal: "Normal", high: "High" }), half: true },
+    { name: "dueTime", label: "Time (adds to calendar)", type: "time", half: true },
+    { name: "durationMinutes", label: "Length (min)", type: "minutes", placeholder: "30", half: true },
     { name: "status", label: "Status", type: "select", options: opts(taskStatuses, labels.taskStatus), half: true },
     { name: "assigneeId", label: "Assigned to", type: "person", roles: ["team"], half: true },
     { name: "notes", label: "Notes", type: "textarea" },
@@ -175,6 +177,10 @@ export function RecordForm({
         return <textarea {...common} rows={3} value={v} placeholder={f.placeholder} onChange={(e) => set(f.name, e.target.value)} />;
       case "date":
         return <input {...common} type="date" value={v} onChange={(e) => set(f.name, e.target.value)} />;
+      case "time":
+        return <input {...common} type="time" step={300} value={v} onChange={(e) => set(f.name, e.target.value)} />;
+      case "minutes":
+        return <input {...common} type="number" min={5} max={1440} step={5} inputMode="numeric" value={v} placeholder={f.placeholder} onChange={(e) => set(f.name, e.target.value)} />;
       case "people": {
         const selected = (values[f.name] as string[]) ?? [];
         const list = [...(people ?? [])].sort(
@@ -347,7 +353,11 @@ export function valuesToPatch(fields: FieldDef[], values: FormValues, mode: "cre
         ? new Date(raw as string).toISOString()
         : f.type === "hours"
           ? Math.max(1, Math.round(Number(raw) * 60))
-          : raw;
+          : f.type === "minutes"
+            ? Math.min(1440, Math.max(5, Math.round(Number(raw))))
+            : f.type === "time"
+              ? (raw as string).slice(0, 5)
+              : raw;
   }
   return out;
 }

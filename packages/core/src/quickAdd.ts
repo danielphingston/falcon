@@ -6,6 +6,8 @@ export interface QuickAddDraft {
   kind: "task" | "followup" | "irl";
   text: string;
   due?: string;
+  /** HH:mm when a time was given ("at 3pm", "!15:00", "!fri@10:30"). */
+  time?: string;
   priority: "normal" | "high";
   personQuery?: string;
   person?: Person;
@@ -15,6 +17,8 @@ export interface QuickAddDraft {
 
 interface Ctx {
   today: string;
+  /** Current time, to put a bare "at 3pm" on today or tomorrow. */
+  now?: Date;
   people: Person[];
   engagements: Engagement[];
   settings: Pick<Settings, "workingDays" | "holidays">;
@@ -46,6 +50,22 @@ export function parseDateWord(word: string, ctx: Pick<Ctx, "today" | "settings">
   return undefined;
 }
 
+/**
+ * Parses a time word: 3pm, 3:30pm, 10am, 15:00, 9.30am. A bare number
+ * without am/pm or a colon isn't a time (too ambiguous).
+ */
+export function parseTimeWord(word: string): string | undefined {
+  const m = /^(\d{1,2})(?:[:.](\d{2}))?(am|pm|a|p)?$/i.exec(word.trim());
+  if (!m || (!m[2] && !m[3])) return undefined;
+  let h = Number(m[1]);
+  const min = Number(m[2] ?? 0);
+  const ap = m[3]?.toLowerCase();
+  if (min > 59 || h > 23 || (ap && (h < 1 || h > 12))) return undefined;
+  if (ap?.startsWith("p") && h < 12) h += 12;
+  if (ap?.startsWith("a") && h === 12) h = 0;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
 const norm = (s: string) => s.toLowerCase().replace(/[_\s]+/g, " ").trim();
 
 function matchByName<T extends { name: string }>(items: T[], query: string): T | undefined {
@@ -68,13 +88,23 @@ export function parseQuickAdd(input: string, ctx: Ctx): QuickAddDraft {
   const words: string[] = [];
   const draft: QuickAddDraft = { kind: "task", text: "", priority: "normal" };
 
-  for (const token of input.trim().split(/\s+/).filter(Boolean)) {
+  const tokens = input.trim().split(/\s+/).filter(Boolean);
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
     if (token === "!!" || token.toLowerCase() === "!high") {
       draft.priority = "high";
     } else if (token.startsWith("!") && token.length > 1) {
-      const d = parseDateWord(token.slice(1), ctx);
+      // !fri, !3pm, !fri@15:30
+      const [datePart, timePart] = token.slice(1).split("@");
+      const d = parseDateWord(datePart, ctx);
+      const t = timePart ? parseTimeWord(timePart) : d ? undefined : parseTimeWord(datePart);
       if (d) draft.due = d;
-      else words.push(token);
+      if (t) draft.time = t;
+      if (!d && !t) words.push(token);
+    } else if (token.toLowerCase() === "at" && tokens[i + 1] && parseTimeWord(tokens[i + 1])) {
+      draft.time = parseTimeWord(tokens[++i]);
+    } else if (/(am|pm)$/i.test(token) && parseTimeWord(token)) {
+      draft.time = parseTimeWord(token);
     } else if (token.startsWith("@") && token.length > 1) {
       draft.personQuery = token.slice(1).replace(/_/g, " ");
     } else if (token.startsWith("#") && token.length > 1) {
@@ -95,6 +125,12 @@ export function parseQuickAdd(input: string, ctx: Ctx): QuickAddDraft {
     if (words[0]?.toLowerCase() === "on" || words[0]?.toLowerCase() === "for") words.shift();
   }
 
+  // A time with no date means the next time it comes round: today, or tomorrow if it's passed.
+  if (draft.time && !draft.due) {
+    const now = ctx.now ?? new Date();
+    const passed = toISODate(now) === ctx.today && `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}` >= draft.time;
+    draft.due = passed ? toISODate(addDays(parseISO(ctx.today), 1)) : ctx.today;
+  }
   draft.text = words.join(" ");
   if (draft.personQuery) draft.person = matchByName(ctx.people, draft.personQuery);
   if (draft.engagementQuery) {

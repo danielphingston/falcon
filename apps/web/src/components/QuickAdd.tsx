@@ -20,7 +20,7 @@ export function QuickAdd({ defaultEngagementId, autoFocus }: { defaultEngagement
   const today = useToday();
 
   const draft = useMemo(
-    () => parseQuickAdd(text, { today, people, engagements, settings }),
+    () => parseQuickAdd(text, { today, now: new Date(), people, engagements, settings }),
     [text, today, people, engagements, settings],
   );
   const engagementId = draft.engagement?.id ?? (draft.engagementQuery ? undefined : defaultEngagementId);
@@ -40,7 +40,7 @@ export function QuickAdd({ defaultEngagementId, autoFocus }: { defaultEngagement
         return createFollowUp(ctx, { about: draft.text, personId, engagementId, due: draft.due });
       if (draft.kind === "irl")
         return createInfoRequest(ctx, { description: draft.text, engagementId: engagementId!, requestedFromId: personId, requestedOn: today, due: draft.due });
-      return create(ctx, "tasks", { title: draft.text, engagementId, due: draft.due, priority: draft.priority, assigneeId: personId });
+      return create(ctx, "tasks", { title: draft.text, engagementId, due: draft.due, dueTime: draft.time, priority: draft.priority, assigneeId: personId });
     });
     if (res) setText("");
   };
@@ -52,7 +52,11 @@ export function QuickAdd({ defaultEngagementId, autoFocus }: { defaultEngagement
       chips.push({ label: `@${draft.person?.name ?? `${draft.personQuery} (new)`}`, tone: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200" });
     if (engagementName) chips.push({ label: `#${engagementName}`, tone: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-200" });
     else if (draft.engagementQuery) chips.push({ label: `#${draft.engagementQuery}?`, tone: "bg-rose-100 text-rose-700" });
-    if (draft.due) chips.push({ label: relativeDay(draft.due, today), tone: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200" });
+    if (draft.due)
+      chips.push({
+        label: `${relativeDay(draft.due, today)}${draft.time && draft.kind === "task" ? ` ${draft.time} · calendar` : ""}`,
+        tone: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
+      });
     if (draft.priority === "high") chips.push({ label: "High", tone: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-200" });
   }
 
@@ -107,7 +111,7 @@ export function QuickAdd({ defaultEngagementId, autoFocus }: { defaultEngagement
                 </>
               ) : (
                 <span className="text-xs muted">
-                  <b>@</b>person · <b>#</b>engagement · <b>!</b>fri / !tom / !+2 / !25/10 · <b>!!</b> high · start with <b>chase</b> or <b>irl</b>
+                  <b>@</b>person · <b>#</b>engagement · <b>!</b>fri / !tom@3pm / !+2 · <b>at 3pm</b> adds to calendar · <b>!!</b> high · start with <b>chase</b> or <b>irl</b>
                 </span>
               )}
             </div>

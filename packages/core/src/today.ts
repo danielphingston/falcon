@@ -58,7 +58,9 @@ export function computeToday(s: Snapshot, today: string): TodayView {
   for (const f of s.followUps)
     if (f.status === "waiting" && f.due && f.due <= today && inLive(f.engagementId))
       due.push({ kind: "followup", record: f, due: f.due });
-  due.sort((a, b) => a.due.localeCompare(b.due));
+  // By date, then timed items in time order before untimed ones.
+  const timeOf = (d: DueItem) => (d.kind === "task" && d.record.dueTime) || "99:99";
+  due.sort((a, b) => a.due.localeCompare(b.due) || timeOf(a).localeCompare(timeOf(b)));
 
   const chaseItems: { personId?: string; item: ChaseItem }[] = [];
   for (const r of s.infoRequests)

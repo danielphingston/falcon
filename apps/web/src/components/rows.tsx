@@ -28,15 +28,16 @@ export function useLookups() {
 }
 type Lookups = ReturnType<typeof useLookups>;
 
-function Due({ due, done }: { due?: string; done?: boolean }) {
+function Due({ due, done, time }: { due?: string; done?: boolean; time?: string }) {
   const today = useToday();
   if (!due) return null;
   const late = !done && due < today;
   const isToday = due === today;
   return (
     <span className={`inline-flex items-center gap-1 ${late ? "font-semibold text-rose-600" : isToday ? "font-semibold text-amber-600" : ""}`}>
-      <Icon name="clock" size={12} />
+      <Icon name={time ? "calendar" : "clock"} size={12} />
       {relativeDay(due, today)}
+      {time && ` ${time}`}
     </span>
   );
 }
@@ -61,7 +62,7 @@ export function TaskRow({ task, l, hideEngagement }: { task: Task; l: Lookups; h
         <Meta>
           {!hideEngagement && engName(l, task.engagementId) && <span>{engName(l, task.engagementId)}</span>}
           {task.assigneeId && <span>→ {personName(l, task.assigneeId)}</span>}
-          <Due due={task.due} done={done} />
+          <Due due={task.due} done={done} time={task.dueTime} />
         </Meta>
       </div>
       {task.status === "in_progress" && <Pill tone="blue">In progress</Pill>}

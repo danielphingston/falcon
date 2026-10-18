@@ -68,6 +68,10 @@ export const taskFields = z.object({
   engagementId: z.string().optional(),
   workstreamId: z.string().optional(),
   due: isoDate.optional(),
+  /** Local start time (HH:mm, 24h) on the due date; makes it a timed calendar event. */
+  dueTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Expected a time like 15:30").optional(),
+  /** Length of the calendar event in minutes (default 30). */
+  durationMinutes: z.number().int().min(5).max(24 * 60).optional(),
   priority: z.enum(priorities).default("normal"),
   status: z.enum(taskStatuses).default("todo"),
   /** Empty means "me". */

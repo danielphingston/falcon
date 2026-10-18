@@ -53,6 +53,10 @@ const tool = <S extends z.ZodType>(def: ToolDef<S>): ToolDef<S> => def;
 
 const dateArg = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Date as YYYY-MM-DD");
 const optDate = dateArg.optional();
+const timeArg = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+  .describe("Time as 24h HH:mm");
 
 // ---------- Lookups ----------
 
@@ -143,6 +147,7 @@ export const tools = [
         id: i.record.id,
         kind: i.kind,
         title: titleOf(i),
+        time: i.kind === "task" ? i.record.dueTime : undefined,
         engagement: "engagementId" in i.record && i.record.engagementId ? eng.get(i.record.engagementId) : undefined,
       });
       return {
@@ -263,35 +268,43 @@ export const tools = [
   tool({
     name: "create_task",
     kind: "write",
-    description: "Create a to-do. Assign it to a team member to track work you've pushed to them.",
+    description:
+      "Create a to-do, call or meeting. When the user gives a time (\"call Rahul at 3pm\", \"review meeting 10:30-11:30\"), set due AND time (and durationMinutes if an end time or length is given): it is then added to their Google Calendar at that time with a reminder. Assign it to a team member to track work you've pushed to them.",
     input: z.object({
       title: z.string(),
       engagement: z.string().optional().describe("Engagement id or name"),
       due: optDate,
+      time: timeArg.optional().describe("Start time, 24h HH:mm, e.g. 15:00. Requires due."),
+      durationMinutes: z.number().int().min(5).max(1440).optional().describe("Length in minutes; default 30"),
       priority: z.enum(priorities).optional(),
       assignee: z.string().optional().describe("Team member name or id; omit for me"),
       notes: z.string().optional(),
     }),
-    async run(ctx, { engagement, assignee, ...rest }) {
+    async run(ctx, { engagement, assignee, time, ...rest }) {
+      if (time && !rest.due) throw new Error("A time needs a date: pass due as well.");
       const engagementId = engagement ? (await resolveEngagement(ctx.store, engagement)).id : undefined;
       const assigneeId = (await resolvePerson(ctx, assignee, "team"))?.id;
-      return { created: brief("tasks", (await create(ctx, "tasks", { ...rest, engagementId, assigneeId })).record) };
+      const r = await create(ctx, "tasks", { ...rest, dueTime: time, engagementId, assigneeId });
+      return { created: brief("tasks", r.record), calendar: time ? "Added to Google Calendar at this time once synced (if Google is connected)." : undefined };
     },
   }),
 
   tool({
     name: "update_task",
     kind: "write",
-    description: "Edit a task or mark it done.",
+    description: "Edit a task (title, date, time, length, priority) or mark it done. Set time to \"\" to make it untimed again.",
     input: z.object({
       id: z.string(),
       title: z.string().optional(),
       due: optDate,
+      time: z.union([timeArg, z.literal("")]).optional().describe("Start time HH:mm, or \"\" to remove"),
+      durationMinutes: z.number().int().min(5).max(1440).optional(),
       priority: z.enum(priorities).optional(),
       status: z.enum(taskStatuses).optional(),
       notes: z.string().optional(),
     }),
-    async run(ctx, { id, status, ...patch }) {
+    async run(ctx, { id, status, time, ...rest }) {
+      const patch = { ...rest, ...(time === undefined ? {} : { dueTime: time === "" ? null : time }) };
       if (Object.keys(patch).length) await update(ctx, "tasks", id, patch);
       const r = status ? (status === "in_progress" ? await update(ctx, "tasks", id, { status }) : await setTaskDone(ctx, id, status === "done")) : null;
       return { updated: brief("tasks", r?.record ?? (await ctx.store.get("tasks", id))!) };

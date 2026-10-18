@@ -75,10 +75,28 @@ export function desiredEvents(
         if (inWindow(e[field])) out.push(allDay(`eng:${e.id}:${field}`, `📑 ${e.name}: ${label}`, e[field]!, 900));
     }
 
+  const live = new Set(s.engagements.filter((e) => e.status !== "closed").map((e) => e.id));
+  const ok = (eid?: string) => !eid || live.has(eid);
+
+  // Tasks with a time are appointments: they go on the calendar at that time
+  // whenever reminders are synced, even if all-day due dates are off.
+  if (settings.calendarAlerts || settings.calendarDueDates)
+    for (const t of s.tasks)
+      if (t.status !== "done" && t.dueTime && inWindow(t.due) && ok(t.engagementId)) {
+        const start = new Date(`${t.due}T${t.dueTime}:00`);
+        out.push({
+          key: `task:${t.id}`,
+          summary: t.title,
+          allDay: false,
+          start: start.toISOString(),
+          end: new Date(start.getTime() + (t.durationMinutes ?? 30) * 60_000).toISOString(),
+          reminderMinutes: 10,
+        });
+      }
+
   if (settings.calendarDueDates) {
-    const live = new Set(s.engagements.filter((e) => e.status !== "closed").map((e) => e.id));
-    const ok = (eid?: string) => !eid || live.has(eid);
-    for (const t of s.tasks) if (t.status !== "done" && inWindow(t.due) && ok(t.engagementId)) out.push(allDay(`task:${t.id}`, `✅ ${t.title}`, t.due!));
+    for (const t of s.tasks)
+      if (t.status !== "done" && !t.dueTime && inWindow(t.due) && ok(t.engagementId)) out.push(allDay(`task:${t.id}`, `✅ ${t.title}`, t.due!));
     for (const w of s.workpapers)
       if (w.status !== "final" && w.status !== "cleared" && inWindow(w.due) && ok(w.engagementId)) out.push(allDay(`wp:${w.id}`, `📄 ${w.ref} ${w.title}`, w.due!));
     for (const f of s.followUps) if (f.status === "waiting" && inWindow(f.due) && ok(f.engagementId)) out.push(allDay(`fu:${f.id}`, `⏳ ${f.about}`, f.due!));
