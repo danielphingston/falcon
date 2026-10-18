@@ -13,6 +13,7 @@ import { PeoplePage } from "./pages/People";
 import { SettingsPage } from "./pages/Settings";
 import { NotFound } from "./pages/NotFound";
 import { TimePage } from "./pages/Time";
+import { ChatPage } from "./pages/Chat";
 import { ReportsPage } from "./pages/Reports";
 import { ProgressPage } from "./pages/Progress";
 import { MorePage } from "./pages/More";
@@ -28,6 +29,7 @@ const router = createBrowserRouter(
         { path: "engagements/:id/:tab", element: <EngagementPage /> },
         { path: "followups", element: <FollowUpsPage /> },
         { path: "review", element: <ReviewPage /> },
+        { path: "chat", element: <ChatPage /> },
         { path: "time", element: <TimePage /> },
         { path: "reports", element: <ReportsPage /> },
         { path: "progress", element: <ProgressPage /> },

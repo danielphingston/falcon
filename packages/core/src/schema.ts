@@ -283,6 +283,10 @@ export const settingsSchema = z.object({
   calendarAlerts: z.boolean().default(true),
   calendarKeyDates: z.boolean().default(true),
   calendarDueDates: z.boolean().default(false),
+  /** Gemini model for the in-app chat. */
+  geminiModel: z.string().default("gemini-3.8-flash"),
+  /** How the chat authenticates: the Google sign-in, or a pasted API key. */
+  geminiAuth: z.enum(["google", "key"]).default("google"),
 });
 
 /** Settings that follow the user across devices; the rest (theme, Google setup…) stay per device. */

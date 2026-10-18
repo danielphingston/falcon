@@ -13,6 +13,7 @@ import { toast } from "../lib/toast";
 import { EditorHost, openEditor } from "./Editor";
 import { LevelUpOverlay } from "./LevelUp";
 import { SyncBadge } from "./SyncBadge";
+import { ChatLauncher } from "./ChatDrawer";
 import { startAutoSync } from "../lib/sync";
 import { Icon, type IconName } from "./Icon";
 import { TLink } from "./TLink";
@@ -23,13 +24,14 @@ const nav: { to: string; label: string; icon: IconName }[] = [
   { to: "/engagements", label: "Engagements", icon: "briefcase" },
   { to: "/followups", label: "Follow-ups", icon: "inbox" },
   { to: "/review", label: "Review", icon: "review" },
+  { to: "/chat", label: "Assistant", icon: "sparkles" },
   { to: "/time", label: "Time & focus", icon: "clock" },
   { to: "/reports", label: "Reports", icon: "flag" },
-  { to: "/progress", label: "Progress", icon: "sparkles" },
+  { to: "/progress", label: "Progress", icon: "flag" },
   { to: "/people", label: "People", icon: "users" },
   { to: "/settings", label: "Settings", icon: "settings" },
 ];
-const moreRoutes = ["/more", "/time", "/reports", "/progress", "/people", "/settings"];
+const moreRoutes = ["/more", "/chat", "/time", "/reports", "/progress", "/people", "/settings"];
 
 const isActive = (path: string, to: string) => (to === "/" ? path === "/" : path.startsWith(to));
 
@@ -96,16 +98,19 @@ export function Layout() {
             <TabLink to="/more" label="More" icon="more" active={moreRoutes.some((r) => pathname.startsWith(r))} />
           </div>
         </nav>
-        <motion.button
-          className="fixed bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] right-4 z-40 grid size-14 place-items-center rounded-2xl bg-brand-600 text-white shadow-xl shadow-brand-600/30 md:hidden"
-          whileTap={{ scale: 0.9 }}
-          onClick={() => openEditor({ table: "tasks" })}
-          aria-label="New task"
-        >
-          <Icon name="plus" size={26} />
-        </motion.button>
+        {!pathname.startsWith("/chat") && (
+          <motion.button
+            className="fixed bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] right-4 z-40 grid size-14 place-items-center rounded-2xl bg-brand-600 text-white shadow-xl shadow-brand-600/30 md:hidden"
+            whileTap={{ scale: 0.9 }}
+            onClick={() => openEditor({ table: "tasks" })}
+            aria-label="New task"
+          >
+            <Icon name="plus" size={26} />
+          </motion.button>
+        )}
       </div>
       {!pathname.startsWith("/time") && <TimerPill />}
+      <ChatLauncher />
       <EditorHost />
       <LevelUpOverlay />
       <Toaster />

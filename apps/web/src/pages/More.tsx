@@ -3,9 +3,10 @@ import { SyncBadge } from "../components/SyncBadge";
 import { TLink } from "../components/TLink";
 
 const links: { to: string; label: string; hint: string; icon: IconName }[] = [
+  { to: "/chat", label: "Assistant", hint: "Run your day by chatting with Gemini", icon: "sparkles" },
   { to: "/time", label: "Time & focus", hint: "Focus timer and timesheet", icon: "clock" },
   { to: "/reports", label: "Reports", hint: "Daily and weekly summaries", icon: "flag" },
-  { to: "/progress", label: "Progress", hint: "Ring, streaks, level and badges", icon: "sparkles" },
+  { to: "/progress", label: "Progress", hint: "Ring, streaks, level and badges", icon: "flag" },
   { to: "/people", label: "People", hint: "Clients, managers and team", icon: "users" },
   { to: "/settings", label: "Settings", hint: "Working week, backup, look & feel", icon: "settings" },
 ];

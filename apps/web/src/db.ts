@@ -72,7 +72,9 @@ export async function getSettings(): Promise<Settings> {
 export async function saveSettings(patch: Partial<Settings>, opts: { syncedAt?: string } = {}) {
   const next = settingsSchema.parse({ ...(await getSettings()), ...patch });
   await db.meta.put({ key: "settings", value: next });
-  const touchesSynced = Object.keys(patch).some((k) => (syncedSettingsKeys as readonly string[]).includes(k));
+  // Note: keep syncedSettingsKeys out of an `as` cast; the dev transform elided the import when it was.
+  const synced: readonly string[] = syncedSettingsKeys;
+  const touchesSynced = Object.keys(patch).some((k) => synced.includes(k));
   if (opts.syncedAt) await db.meta.put({ key: "settingsUpdatedAt", value: opts.syncedAt });
   else if (touchesSynced) await db.meta.put({ key: "settingsUpdatedAt", value: new Date().toISOString() });
   return next;

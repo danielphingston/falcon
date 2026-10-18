@@ -3,7 +3,7 @@
  * the browser: access tokens last ~1 hour, there are no refresh tokens, so when
  * one expires the user taps "Reconnect" (a popup needs a user gesture).
  */
-import { GOOGLE_SCOPES } from "@fdd/core";
+import { GEMINI_OAUTH_SCOPE, GOOGLE_SCOPES } from "@fdd/core";
 import { db, getSettings } from "../db";
 
 interface TokenResponse {
@@ -80,10 +80,12 @@ export async function connectGoogle(): Promise<GoogleAuth> {
   if (!clientId) throw new Error("Add your Google OAuth client ID first");
   const gis = await loadGis();
   const previous = await readAuth();
+  // Gemini access is only requested when the assistant is set to use the Google sign-in.
+  const scopes = (await getSettings()).geminiAuth === "google" ? [...GOOGLE_SCOPES, GEMINI_OAUTH_SCOPE] : [...GOOGLE_SCOPES];
   const response = await new Promise<TokenResponse>((resolve, reject) => {
     const client = gis.accounts.oauth2.initTokenClient({
       client_id: clientId,
-      scope: GOOGLE_SCOPES.join(" "),
+      scope: scopes.join(" "),
       callback: (r) => (r.error ? reject(new Error(r.error_description || r.error)) : resolve(r)),
       error_callback: (e) => reject(new Error(e.type === "popup_closed" ? "Sign-in window was closed" : e.message || e.type)),
     });

@@ -1,5 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
-import { BACKUP_VERSION, mergeRecords, parseBackup, tableNames, type Backup, type Settings } from "@fdd/core";
+import { BACKUP_VERSION, GEMINI_OAUTH_SCOPE, listGeminiModels, mergeRecords, parseBackup, tableNames, type Backup, type Settings } from "@fdd/core";
+import { chatAuth, clearChat, friendlyError, getGeminiKey, setGeminiKey } from "../lib/chat";
 import { Icon } from "../components/Icon";
 import { Segmented } from "../components/ui";
 import { db, getSettings, saveSettings } from "../db";
@@ -59,6 +60,7 @@ export function SettingsPage() {
       </header>
 
       <GoogleGroup s={s} />
+      <AiGroup s={s} />
 
       <Group title="You">
         <Row label="Your name" hint="Used in greetings and chase emails">
@@ -298,6 +300,130 @@ function GoogleGroup({ s }: { s: Settings }) {
           </Row>
         </>
       )}
+    </Group>
+  );
+}
+
+const MODEL_PRESETS = [
+  { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash (recommended)" },
+  { id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite (cheapest)" },
+  { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (preview, most capable)" },
+];
+
+function AiGroup({ s }: { s: Settings }) {
+  const auth = useLiveQuery(readAuth, []);
+  const savedKey = useLiveQuery(getGeminiKey, []);
+  const [key, setKey] = useState<string | null>(null);
+  const [show, setShow] = useState(false);
+  const [models, setModels] = useState<string[] | null>(null);
+  const [checking, setChecking] = useState(false);
+  const googleReady = hasScope(auth ?? null, GEMINI_OAUTH_SCOPE);
+  const options = [...MODEL_PRESETS.map((m) => m.id), ...(models ?? [])].filter((m, i, a) => a.indexOf(m) === i);
+  if (!options.includes(s.geminiModel)) options.unshift(s.geminiModel);
+
+  const check = async () => {
+    setChecking(true);
+    try {
+      const a = await chatAuth();
+      if (typeof a === "string") throw new Error(a);
+      const list = await listGeminiModels(a);
+      setModels(list);
+      toast({ message: `Gemini works. ${list.length} models available`, tone: "success" });
+    } catch (e) {
+      toast({ message: friendlyError(e), tone: "error", duration: 8000 });
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <Group title="AI assistant (Gemini)">
+      <Row label="Sign in with" hint={s.geminiAuth === "google" ? "Uses your Google sign-in; billed to your Google Cloud project" : "Uses a key from Google AI Studio, stored only on this device"}>
+        <Segmented
+          id="ai-auth"
+          value={s.geminiAuth}
+          onChange={(geminiAuth) => void saveSettings({ geminiAuth })}
+          options={[
+            { value: "google", label: "Google" },
+            { value: "key", label: "API key" },
+          ]}
+        />
+      </Row>
+
+      {s.geminiAuth === "google" ? (
+        <Row
+          label={googleReady ? "Gemini access granted" : auth ? "Gemini access not granted yet" : "Not signed in"}
+          hint={googleReady ? `As ${auth?.email ?? "your Google account"}` : auth ? "Reconnect and tick the Gemini permission" : "Connect Google above first"}
+        >
+          {auth && !googleReady ? (
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={async () => {
+                try {
+                  await connectGoogle();
+                } catch (e) {
+                  toast({ message: e instanceof Error ? e.message : "Couldn't connect", tone: "error" });
+                }
+              }}
+            >
+              Allow Gemini
+            </button>
+          ) : (
+            <span className={`text-sm font-medium ${googleReady ? "text-emerald-600" : "muted"}`}>{googleReady ? "Ready" : "—"}</span>
+          )}
+        </Row>
+      ) : (
+        <Row label="Gemini API key" hint={savedKey ? "Saved on this device" : "Create one at aistudio.google.com → Get API key"}>
+          <div className="flex w-full max-w-80 gap-2">
+            <input
+              className="input font-mono text-xs"
+              type={show ? "text" : "password"}
+              autoComplete="off"
+              placeholder={savedKey ? "••••••••••••" : "AIza…"}
+              value={key ?? ""}
+              onChange={(e) => setKey(e.target.value)}
+              aria-label="Gemini API key"
+            />
+            <button className="btn btn-ghost btn-sm" onClick={() => setShow(!show)} aria-label={show ? "Hide key" : "Show key"}>
+              <Icon name="review" size={15} />
+            </button>
+            <button
+              className="btn btn-soft btn-sm"
+              disabled={key === null}
+              onClick={async () => {
+                await setGeminiKey(key ?? "");
+                setKey(null);
+                toast({ message: key ? "Key saved on this device" : "Key removed", tone: "success" });
+              }}
+            >
+              {key === "" ? "Remove" : "Save"}
+            </button>
+          </div>
+        </Row>
+      )}
+
+      <Row label="Model" hint="Flash is fast and cheap; Pro is better at long, tricky requests">
+        <select className="input max-w-72" value={s.geminiModel} onChange={(e) => void saveSettings({ geminiModel: e.target.value })} aria-label="Gemini model">
+          {options.map((m) => (
+            <option key={m} value={m}>
+              {MODEL_PRESETS.find((p) => p.id === m)?.label ?? m}
+            </option>
+          ))}
+        </select>
+      </Row>
+      <Row label="Check connection" hint="Lists the models your access allows (free)">
+        <button className="btn btn-soft btn-sm" onClick={check} disabled={checking}>
+          <Icon name="refresh" size={14} /> {checking ? "Checking…" : "Check"}
+        </button>
+      </Row>
+      <Row label="Chat history" hint="Kept on this device only">
+        <button className="btn btn-soft btn-sm" onClick={() => void clearChat().then(() => toast({ message: "Chat cleared" }))}>
+          Clear
+        </button>
+      </Row>
+      <p className="px-4 py-3 text-xs muted">
+        Messages and attachments you send go to Google's Gemini API. Use a paid (billing-enabled) project or key, so Google doesn't use them to improve its products, and check your firm's policy before sharing client documents.
+      </p>
     </Group>
   );
 }
