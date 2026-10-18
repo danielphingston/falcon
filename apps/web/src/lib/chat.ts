@@ -27,9 +27,11 @@ import { scheduleSync } from "./sync";
 export interface Attachment {
   name: string;
   mimeType: string;
-  data: string; // base64
+  data: string; // base64 (empty for text attachments)
   /** Object URL for image previews (not persisted). */
   preview?: string;
+  /** Spreadsheets are converted to text on the device and sent as text. */
+  text?: string;
 }
 
 export interface ChatMessage {
@@ -134,7 +136,7 @@ export async function sendMessage(text: string, attachments: Attachment[] = []) 
   controller = new AbortController();
 
   const userParts: GPart[] = [
-    ...attachments.map((a) => ({ inlineData: { mimeType: a.mimeType, data: a.data } })),
+    ...attachments.map((a) => (a.text ? { text: a.text } : { inlineData: { mimeType: a.mimeType, data: a.data } })),
     ...(text.trim() ? [{ text: text.trim() }] : [{ text: "(see attachment)" }]),
   ];
   let current: string | null = null; // assistant message receiving text

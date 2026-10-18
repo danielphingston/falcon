@@ -14,7 +14,7 @@ import {
 } from "@fdd/core";
 import { useTable } from "../lib/hooks";
 
-export type FieldType = "text" | "textarea" | "date" | "datetime" | "select" | "person" | "engagement" | "workstream" | "toggles" | "hours" | "task";
+export type FieldType = "text" | "textarea" | "date" | "datetime" | "select" | "person" | "people" | "engagement" | "workstream" | "toggles" | "hours" | "task";
 
 export interface FieldDef {
   name: string;
@@ -28,7 +28,11 @@ export interface FieldDef {
   /** Hide in edit mode (e.g. workstreams picked only on create). */
   createOnly?: boolean;
   half?: boolean;
+  /** For "text": suggestions offered as you type. */
+  suggest?: string[];
 }
+
+export const ASSIGNMENT_TYPES = ["Due Diligence", "Transaction Support", "Stat Audit", "Internal Audit", "Tax Audit", "ITR", "Valuation", "Advisory"];
 
 const opts = <K extends string>(values: readonly K[], map: Record<K, string>) =>
   values.map((v) => ({ value: v, label: map[v] }));
@@ -44,10 +48,13 @@ export const formDefs: Record<TableName, FieldDef[]> = {
     { name: "notes", label: "Notes", type: "textarea" },
   ],
   engagements: [
-    { name: "name", label: "Code name", type: "text", required: true, placeholder: "e.g. Project Falcon" },
-    { name: "client", label: "Target / client", type: "text", placeholder: "Optional; code names are safer" },
-    { name: "side", label: "Side", type: "select", options: [{ value: "buy", label: "Buy-side" }, { value: "sell", label: "Sell-side" }, { value: "other", label: "Other" }], half: true },
+    { name: "name", label: "Name", type: "text", required: true, placeholder: "e.g. Project Falcon" },
+    { name: "type", label: "Type", type: "text", placeholder: "e.g. Due Diligence", suggest: ASSIGNMENT_TYPES, half: true },
     { name: "status", label: "Status", type: "select", options: opts(engagementStatuses, labels.engagementStatus), half: true },
+    { name: "client", label: "Target / client", type: "text", placeholder: "Optional; code names are safer" },
+    { name: "leadId", label: "Lead", type: "person", roles: ["team", "manager"], half: true },
+    { name: "side", label: "Side (DD)", type: "select", options: [{ value: "buy", label: "Buy-side" }, { value: "sell", label: "Sell-side" }, { value: "other", label: "Other / n.a." }], half: true },
+    { name: "team", label: "Team", type: "people", roles: ["team"] },
     { name: "workstreams", label: "Workstreams", type: "toggles", options: [...defaultWorkstreams, "Payroll", "Commercial"].map((w) => ({ value: w, label: w })), createOnly: true },
     { name: "kickoff", label: "Kick-off", type: "date", half: true },
     { name: "dataRoom", label: "Data room opens", type: "date", half: true },
@@ -102,6 +109,7 @@ export const formDefs: Record<TableName, FieldDef[]> = {
   people: [
     { name: "name", label: "Name", type: "text", required: true },
     { name: "role", label: "Role", type: "select", options: opts(personRoles, labels.personRole), half: true },
+    { name: "designation", label: "Designation", type: "text", placeholder: "e.g. Article, Senior", suggest: ["Article", "Associate", "Senior", "Assistant Manager", "Manager", "Team Lead"], half: true },
     { name: "org", label: "Organisation", type: "text", half: true },
     { name: "email", label: "Email", type: "text", half: true },
     { name: "phone", label: "Phone", type: "text", half: true },
@@ -167,6 +175,31 @@ export function RecordForm({
         return <textarea {...common} rows={3} value={v} placeholder={f.placeholder} onChange={(e) => set(f.name, e.target.value)} />;
       case "date":
         return <input {...common} type="date" value={v} onChange={(e) => set(f.name, e.target.value)} />;
+      case "people": {
+        const selected = (values[f.name] as string[]) ?? [];
+        const list = [...(people ?? [])].sort(
+          (a, b) => Number(!f.roles?.includes(a.role)) - Number(!f.roles?.includes(b.role)) || a.name.localeCompare(b.name),
+        );
+        return (
+          <div className="flex flex-wrap gap-1.5">
+            {list.map((p) => {
+              const on = selected.includes(p.id);
+              return (
+                <button
+                  type="button"
+                  key={p.id}
+                  onClick={() => set(f.name, on ? selected.filter((s) => s !== p.id) : [...selected, p.id])}
+                  className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${on ? "border-brand-500 bg-brand-50 text-brand-700 dark:bg-indigo-950 dark:text-indigo-200" : "border-[var(--border)]"}`}
+                >
+                  {on && "✓ "}
+                  {p.name}
+                </button>
+              );
+            })}
+            {!list.length && <span className="text-xs muted">Add people first (People page), or import your team sheet.</span>}
+          </div>
+        );
+      }
       case "hours":
         return <input {...common} type="number" min={0.05} max={24} step={0.05} inputMode="decimal" value={v} placeholder="1.5" onChange={(e) => set(f.name, e.target.value)} />;
       case "task":
@@ -256,7 +289,18 @@ export function RecordForm({
         );
       }
       default:
-        return <input {...common} type="text" value={v} placeholder={f.placeholder} autoFocus={f === visible[0] && mode === "create"} onChange={(e) => set(f.name, e.target.value)} />;
+        return (
+          <>
+            <input {...common} type="text" value={v} placeholder={f.placeholder} list={f.suggest ? `${formId}-${f.name}-list` : undefined} autoFocus={f === visible[0] && mode === "create"} onChange={(e) => set(f.name, e.target.value)} />
+            {f.suggest && (
+              <datalist id={`${formId}-${f.name}-list`}>
+                {f.suggest.map((s) => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
+            )}
+          </>
+        );
     }
   };
 
@@ -290,6 +334,10 @@ export function valuesToPatch(fields: FieldDef[], values: FormValues, mode: "cre
     if (f.type === "toggles") continue;
     const raw = values[f.name];
     if (raw === undefined) continue;
+    if (f.type === "people") {
+      out[f.name] = raw;
+      continue;
+    }
     if (raw === "") {
       if (mode === "edit") out[f.name] = null;
       continue;

@@ -22,6 +22,7 @@ import { FollowUpRow, IrlRow, ReviewPointRow, TaskRow, WorkpaperRow, useLookups 
 import { QuickAdd } from "../components/QuickAdd";
 import { TLink, useTNavigate } from "../components/TLink";
 import { AnimatedList, EmptyState, ListItem, Pill, Segmented, statusTone } from "../components/ui";
+import { Avatar } from "../components/TeamAvatars";
 import { act } from "../lib/act";
 import { useSettings, useSnapshot, useToday } from "../lib/hooks";
 import { toast } from "../lib/toast";
@@ -64,8 +65,9 @@ export function EngagementPage() {
         <div className="min-w-0">
           <h1 className="truncate text-2xl font-bold tracking-tight md:text-3xl">{e.name}</h1>
           <p className="text-sm muted">
-            {e.client || "No target set"} · {e.side === "buy" ? "Buy-side" : e.side === "sell" ? "Sell-side" : "Other"}
-            {e.timesheetCode && ` · ${e.timesheetCode}`}
+            {[e.type, e.client && e.client !== e.name ? e.client : null, e.side === "buy" ? "Buy-side" : e.side === "sell" ? "Sell-side" : null, e.timesheetCode]
+              .filter(Boolean)
+              .join(" · ") || "No details yet"}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -120,8 +122,36 @@ function Overview({ snap, id }: TabProps) {
   ] as const;
   const [wsName, setWsName] = useState("");
 
+  const lead = e.leadId ? people.get(e.leadId) : null;
+  const team = (e.team ?? []).map((id) => people.get(id)).filter((p) => !!p);
   return (
     <div className="grid gap-4 md:grid-cols-2">
+      <div className="card p-4 md:col-span-2">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold">Team</h3>
+          <button className="btn btn-ghost btn-sm" onClick={() => openEditor({ table: "engagements", id })}>
+            <Icon name="edit" size={14} /> Edit
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <div className="flex items-center gap-2 rounded-full bg-amber-50 py-1 pl-1 pr-3 dark:bg-amber-950/40">
+            <Avatar name={lead?.name ?? "Me"} size={26} ring />
+            <span className="text-sm">
+              <b>{lead?.name ?? "You"}</b> <span className="muted">· lead</span>
+            </span>
+          </div>
+          {team.map((p) => (
+            <div key={p!.id} className="flex items-center gap-2 rounded-full bg-[var(--surface-2)] py-1 pl-1 pr-3">
+              <Avatar name={p!.name} size={26} />
+              <span className="text-sm">
+                {p!.name}
+                {p!.designation && <span className="muted"> · {p!.designation}</span>}
+              </span>
+            </div>
+          ))}
+          {!team.length && <span className="self-center text-sm muted">No team members yet</span>}
+        </div>
+      </div>
       <div className="card p-4">
         <h3 className="mb-3 text-sm font-semibold">Key dates</h3>
         <ul className="space-y-2 text-sm">

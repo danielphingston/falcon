@@ -86,6 +86,7 @@ function recordToValues(table: TableName, r: Record<string, unknown> | null | un
   for (const f of formDefs[table]) {
     const v = r?.[f.name];
     if (f.type === "toggles") out[f.name] = (v as string[]) ?? [...defaultWorkstreams];
+    else if (f.type === "people") out[f.name] = (v as string[] | undefined) ?? [];
     else if (f.type === "datetime") out[f.name] = typeof v === "string" ? toLocalInput(v) : "";
     else if (f.type === "hours") out[f.name] = typeof v === "number" ? String(Math.round((v / 60) * 100) / 100) : "";
     else out[f.name] = v === undefined || v === null ? "" : String(v);

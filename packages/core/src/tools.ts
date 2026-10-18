@@ -20,6 +20,7 @@ import {
 import { todayISO } from "./dates";
 import { computeToday, titleOf } from "./today";
 import { BADGES, chaseStreak, levelFor, pointEvents, ringFor, ringStreak } from "./game";
+import { matchName, nameKey } from "./teamImport";
 import { periodReport, shiftWeek, timesheet, timesheetText, weekDays, weekStart } from "./time";
 import { loadSnapshot, type Store } from "./store";
 import {
@@ -74,15 +75,27 @@ async function resolveEngagement(store: Store, ref: string): Promise<Engagement>
 /** Finds a person by id or name; creates them when `createAs` is given and nobody matches. */
 async function resolvePerson(ctx: Ctx, ref: string | undefined, createAs?: Person["role"]): Promise<Person | undefined> {
   if (!ref || ["me", "myself", "i"].includes(norm(ref))) return undefined;
+  const myName = (await ctx.store.getSettings()).myName;
+  if (myName && myName !== "Me" && nameKey(myName) === nameKey(ref)) return undefined;
   const all = (await ctx.store.list("people")).filter((p) => !p.deleted);
   const hit =
     all.find((p) => p.id === ref) ??
-    all.find((p) => norm(p.name) === norm(ref)) ??
+    matchName(ref, all) ??
     all.find((p) => norm(p.name).split(" ").some((part) => part === norm(ref))) ??
     all.find((p) => norm(p.name).includes(norm(ref)));
   if (hit) return hit;
   if (!createAs) throw new Error(`No person matches "${ref}". Add them with add_person.`);
   return (await create(ctx, "people", { name: ref, role: createAs })).record;
+}
+
+/** Person ids for a list of names, creating team contacts for new names; "me" is skipped. */
+async function resolveTeam(ctx: Ctx, names: string[] | undefined): Promise<string[]> {
+  const ids: string[] = [];
+  for (const n of names ?? []) {
+    const p = await resolvePerson(ctx, n, "team");
+    if (p && !ids.includes(p.id)) ids.push(p.id);
+  }
+  return ids;
 }
 
 async function findAnywhere(store: Store, id: string): Promise<{ table: TableName; record: AnyEntity } | null> {
@@ -174,18 +187,25 @@ export const tools = [
   tool({
     name: "create_engagement",
     kind: "write",
-    description: "Create an engagement (a deal/project, usually a code name like 'Project Falcon') with optional workstreams.",
+    description:
+      "Create an engagement/assignment (e.g. a deal code name like 'Project Falcon', or a client name) with its type, status, lead and team. For a whole team allocation sheet, call this once per assignment (or update_engagement if it already exists).",
     input: z.object({
       name: z.string(),
+      type: z.string().optional().describe("e.g. Due Diligence, Transaction Support, Stat Audit, Internal Audit, ITR"),
+      status: z.enum(engagementStatuses).optional(),
       client: z.string().optional().describe("Target or client company"),
       side: z.enum(["buy", "sell", "other"]).optional(),
+      lead: z.string().optional().describe("Who leads it; omit or 'me' when the user leads it"),
+      team: z.array(z.string()).optional().describe("Team member names; new names become team contacts"),
       workstreams: z.array(z.string()).optional().describe("e.g. QoE, NWC, Net debt, Tax"),
       draftReport: optDate,
       finalReport: optDate,
       timesheetCode: z.string().optional(),
     }),
-    async run(ctx, { workstreams, ...input }) {
-      const r = await createEngagement(ctx, input, workstreams ?? []);
+    async run(ctx, { workstreams, lead, team, ...input }) {
+      const leadId = (await resolvePerson(ctx, lead, "team"))?.id;
+      const teamIds = await resolveTeam(ctx, team);
+      const r = await createEngagement(ctx, { ...input, leadId, team: teamIds.filter((id) => id !== leadId) }, workstreams ?? []);
       return { created: brief("engagements", r.record), workstreams: workstreams ?? [] };
     },
   }),
@@ -193,19 +213,34 @@ export const tools = [
   tool({
     name: "update_engagement",
     kind: "write",
-    description: "Change an engagement's status, dates or details.",
+    description: "Change an engagement's status, type, lead, team, dates or details. `team` replaces the whole team; use addToTeam/removeFromTeam for single changes.",
     input: z.object({
       engagement: z.string().describe("Engagement id or name"),
       status: z.enum(engagementStatuses).optional(),
+      type: z.string().optional(),
       name: z.string().optional(),
       client: z.string().optional(),
+      lead: z.string().optional().describe("New lead's name, or 'me'"),
+      team: z.array(z.string()).optional().describe("Full team (names), replacing the current one"),
+      addToTeam: z.array(z.string()).optional(),
+      removeFromTeam: z.array(z.string()).optional(),
       draftReport: optDate,
       finalReport: optDate,
       notes: z.string().optional(),
     }),
-    async run(ctx, { engagement, ...patch }) {
+    async run(ctx, { engagement, lead, team, addToTeam, removeFromTeam, ...patch }) {
       const e = await resolveEngagement(ctx.store, engagement);
-      return { updated: brief("engagements", (await update(ctx, "engagements", e.id, patch)).record) };
+      let ids = team ? await resolveTeam(ctx, team) : [...(e.team ?? [])];
+      if (addToTeam) ids = [...new Set([...ids, ...(await resolveTeam(ctx, addToTeam))])];
+      if (removeFromTeam) {
+        const drop = new Set((await Promise.all(removeFromTeam.map((n) => resolvePerson(ctx, n)))).map((p) => p?.id));
+        ids = ids.filter((id) => !drop.has(id));
+      }
+      const leadId = lead === undefined ? e.leadId : (await resolvePerson(ctx, lead, "team"))?.id;
+      const leadPatch = lead === undefined ? {} : { leadId: leadId ?? null };
+      // The lead isn't also listed as a team member.
+      const r = await update(ctx, "engagements", e.id, { ...patch, ...leadPatch, team: ids.filter((id) => id !== leadId) });
+      return { updated: brief("engagements", r.record) };
     },
   }),
 

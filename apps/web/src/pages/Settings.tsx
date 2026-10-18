@@ -9,6 +9,7 @@ import { useSettings } from "../lib/hooks";
 import { loadSampleData } from "../lib/sample";
 import { useLiveQuery } from "dexie-react-hooks";
 import { SyncBadge } from "../components/SyncBadge";
+import { ImportAllocation } from "../components/ImportAllocation";
 import { connectGoogle, disconnectGoogle, hasScope, readAuth, warmGoogle } from "../lib/google";
 import { markSignedOut, scheduleSync, syncNow, useSyncStatus } from "../lib/sync";
 import { toast } from "../lib/toast";
@@ -18,6 +19,7 @@ const DAYS = ["S", "M", "T", "W", "T", "F", "S"];
 export function SettingsPage() {
   const s = useSettings();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
   const [perm, setPerm] = useState(() => ("Notification" in window ? Notification.permission : "unsupported"));
   const set = (patch: Partial<Settings>) => void saveSettings(patch);
 
@@ -185,6 +187,12 @@ export function SettingsPage() {
               e.target.value = "";
             }}
           />
+        </Row>
+        <Row label="Import team allocation" hint="Assignments, types and team members from Excel or CSV">
+          <button className="btn btn-soft btn-sm" onClick={() => setImporting(true)}>
+            <Icon name="upload" size={14} /> Import sheet
+          </button>
+          <ImportAllocation open={importing} onClose={() => setImporting(false)} />
         </Row>
         <Row label="Sample data" hint="A demo engagement to explore. Undo removes it">
           <button className="btn btn-soft btn-sm" onClick={() => act("Sample data loaded", (ctx) => loadSampleData(ctx))}>

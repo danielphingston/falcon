@@ -1,8 +1,10 @@
 import { motion } from "motion/react";
 import { useState } from "react";
-import { labels, relativeDay, type Engagement } from "@fdd/core";
+import { engagementPeople, labels, relativeDay, type Engagement } from "@fdd/core";
 import { openEditor } from "../components/Editor";
 import { Icon } from "../components/Icon";
+import { ImportAllocation } from "../components/ImportAllocation";
+import { TeamAvatars } from "../components/TeamAvatars";
 import { engagementSort } from "../components/rows";
 import { TLink, useTNavigate } from "../components/TLink";
 import { EmptyState, Pill, Segmented, statusTone } from "../components/ui";
@@ -24,7 +26,9 @@ export function EngagementsPage() {
   const today = useToday();
   const navigate = useTNavigate();
   const [filter, setFilter] = useState<"live" | "closed">("live");
+  const [importing, setImporting] = useState(false);
   if (!snap) return null;
+  const people = new Map(snap.people.map((p) => [p.id, p]));
 
   const list = snap.engagements.filter((e) => (filter === "live" ? e.status !== "closed" : e.status === "closed")).sort(engagementSort);
 
@@ -35,8 +39,11 @@ export function EngagementsPage() {
           <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Engagements</h1>
           <p className="text-sm muted">{snap.engagements.filter((e) => e.status !== "closed").length} live</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Segmented id="eng-filter" value={filter} onChange={setFilter} options={[{ value: "live", label: "Live" }, { value: "closed", label: "Closed" }]} />
+          <button className="btn btn-soft" onClick={() => setImporting(true)} title="Import a team allocation spreadsheet">
+            <Icon name="upload" size={16} /> Import
+          </button>
           <button
             className="btn btn-primary"
             onClick={() => openEditor({ table: "engagements", onCreated: (r) => navigate(`/engagements/${r.id}`, "forward") })}
@@ -46,11 +53,20 @@ export function EngagementsPage() {
         </div>
       </header>
 
+      <ImportAllocation open={importing} onClose={() => setImporting(false)} />
+
       {list.length === 0 ? (
         <EmptyState
           icon="briefcase"
           title={filter === "live" ? "No live engagements" : "Nothing closed yet"}
-          hint={filter === "live" ? "Add your current deals. Code names like 'Project Falcon' keep client names off your phone." : undefined}
+          hint={filter === "live" ? "Add your current assignments, or import your team allocation sheet." : undefined}
+          action={
+            filter === "live" ? (
+              <button className="btn btn-soft" onClick={() => setImporting(true)}>
+                <Icon name="upload" size={16} /> Import from Excel
+              </button>
+            ) : undefined
+          }
         />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
@@ -75,11 +91,13 @@ export function EngagementsPage() {
                     <div className="min-w-0">
                       <p className="truncate text-lg font-semibold">{e.name}</p>
                       <p className="truncate text-sm muted">
-                        {e.client || "No target set"} · {e.side === "buy" ? "Buy-side" : e.side === "sell" ? "Sell-side" : "Other"}
+                        {e.type || (e.side === "buy" ? "Buy-side" : e.side === "sell" ? "Sell-side" : "Engagement")}
+                        {e.client && e.client !== e.name ? ` · ${e.client}` : ""}
                       </p>
                     </div>
                     <Pill tone={statusTone[e.status]}>{labels.engagementStatus[e.status]}</Pill>
                   </div>
+                  <TeamAvatars ids={engagementPeople(e)} people={people} leadId={e.leadId} />
                   <div className="mt-4 grid grid-cols-4 gap-2 text-center">
                     <Metric n={tasks} label="Tasks" />
                     <Metric n={irlOpen} label="IRL open" />

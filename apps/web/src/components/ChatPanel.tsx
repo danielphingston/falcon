@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { clearChat, fileToAttachment, sendMessage, stopChat, undoToolCall, useChat, type Attachment, type ChatMessage } from "../lib/chat";
+import { readSpreadsheet, sheetsToText } from "../lib/spreadsheet";
 import { useSettings } from "../lib/hooks";
 import { useSpeech } from "../lib/speech";
 import { toast } from "../lib/toast";
@@ -69,12 +70,21 @@ export function ChatPanel({ compact }: { compact?: boolean }) {
   }, [text]);
 
   const addFiles = async (list: FileList | File[]) => {
-    const ok = [...list].filter((f) => f.type.startsWith("image/") || f.type === "application/pdf");
-    if (ok.length < [...list].length) toast({ message: "Only images and PDFs can be attached", tone: "error" });
+    const isSheet = (f: File) => /\.(xlsx|csv)$/i.test(f.name);
+    const ok = [...list].filter((f) => f.type.startsWith("image/") || f.type === "application/pdf" || isSheet(f));
+    if (ok.length < [...list].length) toast({ message: "Attach images, PDFs, or Excel/CSV files", tone: "error" });
     const tooBig = ok.find((f) => f.size > 15 * 1024 * 1024);
     if (tooBig) return toast({ message: `${tooBig.name} is over 15 MB`, tone: "error" });
-    const atts = await Promise.all(ok.map(fileToAttachment));
-    setFiles((f) => [...f, ...atts].slice(0, 6));
+    try {
+      const atts = await Promise.all(
+        ok.map(async (f): Promise<Attachment> =>
+          isSheet(f) ? { name: f.name, mimeType: "text/plain", data: "", text: sheetsToText(f.name, await readSpreadsheet(f)) } : fileToAttachment(f),
+        ),
+      );
+      setFiles((f) => [...f, ...atts].slice(0, 6));
+    } catch (e) {
+      toast({ message: e instanceof Error ? e.message : "Couldn't read that file", tone: "error" });
+    }
   };
 
   const send = (t = text) => {
@@ -158,7 +168,7 @@ export function ChatPanel({ compact }: { compact?: boolean }) {
                 {f.preview ? (
                   <img src={f.preview} alt={f.name} className="size-14 rounded-lg object-cover" />
                 ) : (
-                  <div className="grid size-14 place-items-center rounded-lg bg-[var(--surface-2)] text-[10px] font-semibold">PDF</div>
+                  <div className="grid size-14 place-items-center rounded-lg bg-[var(--surface-2)] text-[10px] font-semibold">{f.text ? "SHEET" : "PDF"}</div>
                 )}
                 <button className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full bg-slate-900 text-white" onClick={() => setFiles((x) => x.filter((_, j) => j !== i))} aria-label={`Remove ${f.name}`}>
                   <Icon name="x" size={12} />
@@ -171,7 +181,7 @@ export function ChatPanel({ compact }: { compact?: boolean }) {
           <button className="btn btn-ghost btn-sm shrink-0 px-2" onClick={() => fileInput.current?.click()} aria-label="Attach image or PDF">
             <Icon name="plus" size={18} />
           </button>
-          <input ref={fileInput} type="file" accept="image/*,application/pdf" multiple hidden onChange={(e) => (e.target.files && void addFiles(e.target.files), (e.target.value = ""))} />
+          <input ref={fileInput} type="file" accept="image/*,application/pdf,.xlsx,.csv" multiple hidden onChange={(e) => (e.target.files && void addFiles(e.target.files), (e.target.value = ""))} />
           <textarea
             ref={input}
             rows={1}

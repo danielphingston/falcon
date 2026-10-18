@@ -21,6 +21,8 @@ export const personFields = z.object({
   name: z.string().trim().min(1),
   role: z.enum(personRoles).default("other"),
   org: z.string().optional(),
+  /** e.g. "Article", "Senior", "Associate". */
+  designation: z.string().optional(),
   email: z.string().optional(),
   phone: z.string().optional(),
   notes: z.string().optional(),
@@ -31,7 +33,13 @@ export const engagementStatuses = ["active", "on_hold", "closed"] as const;
 export const engagementFields = z.object({
   name: z.string().trim().min(1),
   client: z.string().optional(),
+  /** Kind of assignment, e.g. "Due Diligence", "Stat Audit", "Internal Audit", "ITR". */
+  type: z.string().optional(),
   side: z.enum(["buy", "sell", "other"]).default("buy"),
+  /** Who leads it; empty means me. */
+  leadId: z.string().optional(),
+  /** Team members working on it (person ids). Older records may lack this: read with `?? []`. */
+  team: z.array(z.string()).default([]),
   status: z.enum(engagementStatuses).default("active"),
   kickoff: isoDate.optional(),
   dataRoom: isoDate.optional(),
