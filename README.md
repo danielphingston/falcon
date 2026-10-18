@@ -2,7 +2,7 @@
 
 A personal PWA for a CA in Financial Due Diligence: engagements, work papers, review points, IRLs, follow-ups and reminders. It works offline and keeps its data on the device. See [PLAN.md](PLAN.md) for the full roadmap.
 
-**Status:** Phases 0–2 done: local-only tracking, focus timer, timesheet, reports and light gamification (daily ring, streaks, levels, badges, weekly recap). Next phases add Google sync/calendar, Gemini chat and the Claude connector.
+**Status:** Phases 0–3 done: tracking, focus timer, timesheet, reports, light gamification, plus Google Drive sync and Google Calendar (reminders, key dates, due dates, focus blocks, today's agenda). Next: Gemini chat and the Claude connector.
 
 ## Run it
 
@@ -52,9 +52,34 @@ BASE_PATH=/your-repo/ npm run build
 
 Also copy `dist/index.html` to `dist/404.html`, so deep links work on Pages.
 
+## Google setup (sync + Calendar)
+
+The app talks to Google straight from the browser, so it only needs an **OAuth client ID**. There's no secret and no server. This is a one-time setup, about 10 minutes.
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) and create a project (e.g. "FDD Tracker").
+2. **APIs & Services → Library**: enable **Google Drive API** and **Google Calendar API**.
+3. **Google Auth Platform → Branding**: app name "FDD Tracker" plus a support email.
+   **Audience**: User type *External*, publishing status *Testing*. Under **Test users**, add the Gmail address(es) that will use the app.
+   **Data access**: add the scopes `.../auth/drive.appdata` and `.../auth/calendar.events`.
+4. **Clients → Create client → Web application**. Under **Authorized JavaScript origins**, add every place the app runs:
+   - `http://localhost:5173` (dev) and `http://localhost:4173` (preview)
+   - your hosted URL, e.g. `https://fdd-tracker.netlify.app`
+
+   No redirect URI is needed.
+5. Copy the **Client ID**. Then do one of these:
+   - put it in `apps/web/.env.local` as `VITE_GOOGLE_CLIENT_ID=…` before building (see `.env.example`), or
+   - paste it into **Settings → Google sync & Calendar** in the app.
+
+Then tap **Connect Google account**. Things to expect:
+
+- In *Testing* mode, Google shows an "app isn't verified" screen. Choose **Continue**. That's normal for a personal app, and only listed test users can sign in.
+- Access tokens last about an hour, and browsers can't refresh them silently. When one expires, the sync chip shows **Reconnect Google**; one tap fixes it. Your data stays on the device in the meantime.
+- Data goes to a hidden *appDataFolder* in the user's own Drive. Only this OAuth client can read it, and it never appears in the Drive UI.
+- Calendar events the app creates are tagged, so it only updates or removes its own events. It never touches anything else. Focus blocks you schedule are left alone after that.
+
 ## Installing on devices
 
 - **Windows (Chrome/Edge):** open the site → install icon in the address bar → Install.
 - **iPhone (Safari):** Share → Add to Home Screen. Installing matters on iPhone: it keeps the data from being cleared, and notifications only work for installed apps.
 
-Data lives in the browser's IndexedDB on each device. Until Google Drive sync arrives (Phase 3), use **Settings → Export** for backups and **Import** to move data between devices (imports merge; the newer copy of a record wins).
+Data lives in the browser's IndexedDB on each device. Connect Google (above) to sync between devices. Without Google, use **Settings → Export** for backups and **Import** to move data between devices (imports merge; the newer copy of a record wins).

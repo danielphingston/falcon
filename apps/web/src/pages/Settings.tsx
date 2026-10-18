@@ -6,6 +6,10 @@ import { db, getSettings, saveSettings } from "../db";
 import { act } from "../lib/act";
 import { useSettings } from "../lib/hooks";
 import { loadSampleData } from "../lib/sample";
+import { useLiveQuery } from "dexie-react-hooks";
+import { SyncBadge } from "../components/SyncBadge";
+import { connectGoogle, disconnectGoogle, hasScope, readAuth } from "../lib/google";
+import { markSignedOut, scheduleSync, syncNow, useSyncStatus } from "../lib/sync";
 import { toast } from "../lib/toast";
 
 const DAYS = ["S", "M", "T", "W", "T", "F", "S"];
@@ -40,6 +44,7 @@ export function SettingsPage() {
         }
       });
       if (backup.settings) await saveSettings(backup.settings);
+      scheduleSync(500);
       toast({ message: `Imported. ${changed} record${changed === 1 ? "" : "s"} added or updated`, tone: "success" });
     } catch (e) {
       toast({ message: e instanceof Error ? e.message : "Import failed", tone: "error" });
@@ -50,8 +55,10 @@ export function SettingsPage() {
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Settings</h1>
-        <p className="text-sm muted">Everything is stored on this device. Google sync and AI chat come in later phases.</p>
+        <p className="text-sm muted">Data lives on this device, and syncs through your own Google Drive once you connect.</p>
       </header>
+
+      <GoogleGroup s={s} />
 
       <Group title="You">
         <Row label="Your name" hint="Used in greetings and chase emails">
@@ -195,8 +202,103 @@ export function SettingsPage() {
           </button>
         </Row>
       </Group>
-      <p className="pb-4 text-center text-xs muted">FDD Tracker · Phase 2 · data stays on this device</p>
+      <p className="pb-4 text-center text-xs muted">FDD Tracker · Phase 3</p>
     </div>
+  );
+}
+
+function GoogleGroup({ s }: { s: Settings }) {
+  const auth = useLiveQuery(readAuth, []);
+  const status = useSyncStatus();
+  const [clientId, setClientId] = useState(s.googleClientId);
+  const [busy, setBusy] = useState(false);
+  const builtIn = !!import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  const set = (patch: Partial<Settings>) => void saveSettings(patch).then(() => scheduleSync(500));
+
+  const connect = async () => {
+    setBusy(true);
+    try {
+      if (!builtIn && clientId.trim() !== s.googleClientId) await saveSettings({ googleClientId: clientId.trim() });
+      const a = await connectGoogle();
+      const missing = [
+        !hasScope(a, "https://www.googleapis.com/auth/drive.appdata") && "Drive sync",
+        !hasScope(a, "https://www.googleapis.com/auth/calendar.events") && "Calendar",
+      ].filter(Boolean);
+      toast({
+        message: missing.length ? `Connected, but without ${missing.join(" and ")}. Tick those boxes when connecting to use them.` : `Connected as ${a.email ?? "your Google account"}`,
+        tone: missing.length ? "default" : "success",
+        duration: 7000,
+      });
+      await syncNow();
+    } catch (e) {
+      toast({ message: e instanceof Error ? e.message : "Couldn't connect", tone: "error" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Group title="Google sync & Calendar">
+      {!auth ? (
+        <>
+          <div className="space-y-2 px-4 py-3">
+            <p className="text-[15px] font-medium">Sync across devices with Google</p>
+            <p className="text-xs muted">
+              Your data is saved to a hidden app folder in <b>your own</b> Google Drive (you won't see it in Drive), and deadlines, reminders and focus blocks go to your Google Calendar. Nothing passes through any other server.
+            </p>
+          </div>
+          {!builtIn && (
+            <Row label="OAuth client ID" hint="From Google Cloud. See README → Google setup">
+              <input className="input max-w-72 font-mono text-xs" placeholder="1234-abc.apps.googleusercontent.com" value={clientId} onChange={(e) => setClientId(e.target.value)} />
+            </Row>
+          )}
+          <div className="px-4 py-3">
+            <button className="btn btn-primary w-full sm:w-auto" onClick={connect} disabled={busy || (!builtIn && !clientId.trim())}>
+              <Icon name="cloud" size={16} /> {busy ? "Connecting…" : "Connect Google account"}
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <Row label={auth.email ?? "Google account"} hint={status.state === "needs-auth" ? "Session expired. Reconnect to keep syncing" : "Connected"}>
+            <div className="flex flex-wrap items-center gap-2">
+              <SyncBadge />
+              {status.state === "needs-auth" ? (
+                <button className="btn btn-primary btn-sm" onClick={connect} disabled={busy}>
+                  Reconnect
+                </button>
+              ) : (
+                <button className="btn btn-soft btn-sm" onClick={() => void syncNow()} disabled={status.state === "syncing"}>
+                  <Icon name="refresh" size={14} /> Sync now
+                </button>
+              )}
+            </div>
+          </Row>
+          {status.state === "error" && status.message && <p className="px-4 py-2 text-xs text-rose-600">{status.message}</p>}
+          <Row label="Reminders → Calendar" hint="Each reminder becomes an event with a popup, so it fires on every device">
+            <Switch on={s.calendarAlerts} onChange={(calendarAlerts) => set({ calendarAlerts })} />
+          </Row>
+          <Row label="Key dates → Calendar" hint="Kick-off, data room, draft & final report (all-day, reminder the day before)">
+            <Switch on={s.calendarKeyDates} onChange={(calendarKeyDates) => set({ calendarKeyDates })} />
+          </Row>
+          <Row label="Due dates → Calendar" hint="Tasks, work papers and follow-ups with a due date">
+            <Switch on={s.calendarDueDates} onChange={(calendarDueDates) => set({ calendarDueDates })} />
+          </Row>
+          <Row label="Disconnect" hint="Stops syncing on this device. Data here and in Drive stays">
+            <button
+              className="btn btn-soft btn-sm"
+              onClick={async () => {
+                await disconnectGoogle();
+                markSignedOut();
+                toast({ message: "Google disconnected" });
+              }}
+            >
+              Disconnect
+            </button>
+          </Row>
+        </>
+      )}
+    </Group>
   );
 }
 
@@ -212,7 +314,7 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1 basis-48">
         <p className="text-[15px] font-medium">{label}</p>
         {hint && <p className="text-xs muted">{hint}</p>}
       </div>
@@ -223,8 +325,8 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
 
 function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
-    <button role="switch" aria-checked={on} onClick={() => onChange(!on)} className={`relative h-7 w-12 rounded-full transition-colors ${on ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-700"}`}>
-      <span className={`absolute top-0.5 size-6 rounded-full bg-white shadow transition-transform duration-200 ${on ? "translate-x-[22px]" : "translate-x-0.5"}`} />
+    <button role="switch" aria-checked={on} onClick={() => onChange(!on)} className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${on ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-700"}`}>
+      <span className={`absolute left-0.5 top-0.5 size-6 rounded-full bg-white shadow transition-transform duration-200 ${on ? "translate-x-5" : "translate-x-0"}`} />
     </button>
   );
 }

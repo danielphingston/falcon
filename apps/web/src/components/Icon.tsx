@@ -23,6 +23,11 @@ const paths = {
   download: "M12 3v12m0 0-4-4m4 4 4-4M4 21h16",
   upload: "M12 21V9m0 0-4 4m4-4 4 4M4 3h16",
   edit: "M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z",
+  cloud: "M17.5 19H7a5 5 0 1 1 1.1-9.9A6 6 0 0 1 19.6 11 4 4 0 0 1 17.5 19Z",
+  cloudOff: "M2 2l20 20M8.5 8.6A5 5 0 0 0 7 19h10.5M20.8 16.9A4 4 0 0 0 19.6 11a6 6 0 0 0-8.4-4.7",
+  refresh: "M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6",
+  calendar: "M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z",
+  alert: "M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z",
 } as const;
 
 export type IconName = keyof typeof paths;

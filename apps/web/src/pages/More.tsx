@@ -1,4 +1,5 @@
 import { Icon, type IconName } from "../components/Icon";
+import { SyncBadge } from "../components/SyncBadge";
 import { TLink } from "../components/TLink";
 
 const links: { to: string; label: string; hint: string; icon: IconName }[] = [
@@ -13,7 +14,10 @@ const links: { to: string; label: string; hint: string; icon: IconName }[] = [
 export function MorePage() {
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold tracking-tight">More</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">More</h1>
+        <SyncBadge />
+      </div>
       <div className="card divide-y divide-[var(--border)]">
         {links.map((l) => (
           <TLink key={l.to} to={l.to} className="flex items-center gap-3 px-4 py-3.5">

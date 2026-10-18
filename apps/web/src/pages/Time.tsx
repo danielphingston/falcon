@@ -1,10 +1,14 @@
 import { format, parseISO } from "date-fns";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
-import { formatHours, formatMinutes, shiftWeek, timesheet, timesheetText, weekStart } from "@fdd/core";
+import { useLiveQuery } from "dexie-react-hooks";
+import { calendarClient, formatHours, formatMinutes, shiftWeek, timesheet, timesheetText, weekStart } from "@fdd/core";
 import { openEditor } from "../components/Editor";
+import { toLocalInput } from "../components/forms";
 import { Icon } from "../components/Icon";
-import { AnimatedList, EmptyState, ListItem, Section } from "../components/ui";
+import { AnimatedList, EmptyState, ListItem, Section, Sheet } from "../components/ui";
+import { NeedsAuthError, getAccessToken, hasScope, readAuth } from "../lib/google";
+import { syncNow } from "../lib/sync";
 import { byId, useSettings, useTable, useToday } from "../lib/hooks";
 import { mmss, pauseTimer, remainingMs, resumeTimer, startTimer, stopTimer, useTimer } from "../lib/timer";
 import { toast } from "../lib/toast";
@@ -39,6 +43,7 @@ export function TimePage() {
       </header>
 
       <FocusTimer />
+      <FocusBlock />
 
       <Section
         title="Today's log"
@@ -146,6 +151,78 @@ export function TimePage() {
         </div>
       </Section>
     </div>
+  );
+}
+
+/** Reserve deep-work time in Google Calendar so meetings don't eat the day. */
+function FocusBlock() {
+  const auth = useLiveQuery(readAuth, []);
+  const settings = useSettings();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const next = new Date();
+  next.setMinutes(next.getMinutes() < 30 ? 30 : 60, 0, 0);
+  const [when, setWhen] = useState(() => toLocalInput(next.toISOString()));
+  const [minutes, setMinutes] = useState(Math.max(60, settings.focusMinutes));
+  const [label, setLabel] = useState("");
+  if (!hasScope(auth ?? null, "https://www.googleapis.com/auth/calendar.events")) return null;
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const link = await calendarClient(getAccessToken).addFocusBlock(new Date(when), minutes, label.trim() || "Deep work");
+      toast({ message: "Focus block added to your calendar", tone: "success", action: link ? { label: "Open", run: () => window.open(link, "_blank") } : undefined });
+      setOpen(false);
+      setLabel("");
+      void syncNow();
+    } catch (e) {
+      toast({ message: e instanceof NeedsAuthError ? "Reconnect Google in Settings first" : e instanceof Error ? e.message : "Couldn't add the block", tone: "error" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button className="btn btn-soft w-full" onClick={() => setOpen(true)}>
+        <Icon name="calendar" size={16} /> Block focus time in Google Calendar
+      </button>
+      <Sheet
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Block focus time"
+        footer={
+          <>
+            <div className="flex-1" />
+            <button className="btn btn-soft" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+            <button className="btn btn-primary" onClick={save} disabled={busy}>
+              {busy ? "Adding…" : "Add to calendar"}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium muted">What for</span>
+            <input className="input" placeholder="e.g. Falcon QoE bridge" value={label} onChange={(e) => setLabel(e.target.value)} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium muted">Starts</span>
+            <input className="input" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {[60, 90, 120, 180].map((m) => (
+              <button key={m} onClick={() => setMinutes(m)} className={`rounded-full border px-3 py-1 text-sm font-semibold ${minutes === m ? "border-brand-500 bg-brand-50 text-brand-700 dark:bg-indigo-950 dark:text-indigo-200" : "border-[var(--border)]"}`}>
+                {m / 60}h
+              </button>
+            ))}
+          </div>
+          <p className="text-xs muted">Shows as busy, with a reminder 5 minutes before.</p>
+        </div>
+      </Sheet>
+    </>
   );
 }
 

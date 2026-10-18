@@ -1,6 +1,7 @@
 import Dexie, { type Table } from "dexie";
 import {
   settingsSchema,
+  syncedSettingsKeys,
   tableNames,
   type Change,
   type EntityMap,
@@ -64,9 +65,16 @@ export async function getSettings(): Promise<Settings> {
   return parsed.success ? parsed.data : settingsSchema.parse({});
 }
 
-export async function saveSettings(patch: Partial<Settings>) {
+/**
+ * Saves settings. Changing a synced setting stamps "settingsUpdatedAt" so it
+ * wins on the next sync; settings arriving from sync pass their own stamp.
+ */
+export async function saveSettings(patch: Partial<Settings>, opts: { syncedAt?: string } = {}) {
   const next = settingsSchema.parse({ ...(await getSettings()), ...patch });
   await db.meta.put({ key: "settings", value: next });
+  const touchesSynced = Object.keys(patch).some((k) => (syncedSettingsKeys as readonly string[]).includes(k));
+  if (opts.syncedAt) await db.meta.put({ key: "settingsUpdatedAt", value: opts.syncedAt });
+  else if (touchesSynced) await db.meta.put({ key: "settingsUpdatedAt", value: new Date().toISOString() });
   return next;
 }
 

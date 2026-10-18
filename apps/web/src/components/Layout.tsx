@@ -12,6 +12,8 @@ import { completeTimer, mmss, remainingMs, useTimer } from "../lib/timer";
 import { toast } from "../lib/toast";
 import { EditorHost, openEditor } from "./Editor";
 import { LevelUpOverlay } from "./LevelUp";
+import { SyncBadge } from "./SyncBadge";
+import { startAutoSync } from "../lib/sync";
 import { Icon, type IconName } from "./Icon";
 import { TLink } from "./TLink";
 import { Toaster } from "./ui";
@@ -42,6 +44,7 @@ export function Layout() {
   useAlerts();
   useUpdatePrompt();
   useShortcuts();
+  useEffect(() => startAutoSync(), []);
   useEffect(() => {
     void requestPersistence();
     // Browser back/forward: slide the other way.
@@ -70,6 +73,9 @@ export function Layout() {
             );
           })}
           <div className="flex-1" />
+          <div className="mb-1">
+            <SyncBadge />
+          </div>
           <button className="btn btn-primary w-full" onClick={() => openEditor({ table: "tasks" })}>
             <Icon name="plus" size={16} /> New task <kbd className="ml-auto rounded bg-white/20 px-1.5 text-[10px]">N</kbd>
           </button>

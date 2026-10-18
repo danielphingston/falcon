@@ -11,6 +11,7 @@ import {
 } from "@fdd/core";
 import { store } from "../db";
 import { celebrate } from "./confetti";
+import { scheduleSync } from "./sync";
 import { toast } from "./toast";
 
 /**
@@ -33,6 +34,8 @@ export async function act<T extends TableName>(
     return undefined;
   }
 
+  scheduleSync();
+
   if (message)
     toast({
       message,
@@ -40,6 +43,7 @@ export async function act<T extends TableName>(
         label: "Undo",
         run: async () => {
           await undoBatch(store, batchId);
+          scheduleSync();
           toast({ message: "Undone", duration: 1800 });
         },
       },

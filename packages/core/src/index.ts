@@ -10,4 +10,5 @@ export * from "./merge";
 export * from "./time";
 export * from "./game";
 export * from "./tools";
+export * from "./google";
 export { MemoryStore } from "./memoryStore";

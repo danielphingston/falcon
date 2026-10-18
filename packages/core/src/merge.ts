@@ -8,6 +8,8 @@ export interface Backup {
   version: number;
   exportedAt: string;
   settings?: Settings;
+  /** When the synced settings were last changed; newer wins on sync. */
+  settingsUpdatedAt?: string;
   tables: { [K in TableName]: EntityMap[K][] };
 }
 
@@ -16,6 +18,7 @@ const backupSchema = z.object({
   version: z.number().int(),
   exportedAt: z.string(),
   settings: settingsSchema.optional(),
+  settingsUpdatedAt: z.string().optional(),
   tables: z.object(
     Object.fromEntries(tableNames.map((t) => [t, z.array(entitySchemas[t]).default([])])) as {
       [K in TableName]: z.ZodDefault<z.ZodArray<(typeof entitySchemas)[K]>>;

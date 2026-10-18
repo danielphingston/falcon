@@ -278,7 +278,27 @@ export const settingsSchema = z.object({
   timeIncrement: z.number().min(0.05).max(1).default(0.25),
   /** ISO week (e.g. 2026-W43) whose recap was dismissed. */
   recapDismissed: z.string().default(""),
+  /** OAuth client ID from Google Cloud (only needed if the build doesn't include one). */
+  googleClientId: z.string().default(""),
+  calendarAlerts: z.boolean().default(true),
+  calendarKeyDates: z.boolean().default(true),
+  calendarDueDates: z.boolean().default(false),
 });
+
+/** Settings that follow the user across devices; the rest (theme, Google setup…) stay per device. */
+export const syncedSettingsKeys = [
+  "workingDays",
+  "holidays",
+  "chaseDays",
+  "myName",
+  "gamification",
+  "focusTarget",
+  "focusMinutes",
+  "timeIncrement",
+  "calendarAlerts",
+  "calendarKeyDates",
+  "calendarDueDates",
+] as const satisfies readonly (keyof z.output<typeof settingsSchema>)[];
 export type Settings = z.output<typeof settingsSchema>;
 export const defaultSettings = (): Settings => settingsSchema.parse({});
 

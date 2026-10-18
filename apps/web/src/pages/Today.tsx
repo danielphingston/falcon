@@ -1,5 +1,8 @@
 import { format, parseISO } from "date-fns";
-import { motion } from "motion/react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { motion, type Variants } from "motion/react";
+import { SyncBadge } from "../components/SyncBadge";
+import { readCalendarToday } from "../lib/sync";
 import { BADGES, computeToday, formatMinutes, isoWeekKey, logChase, shiftWeek, weekStart, weeklyRecap, type DueItem } from "@fdd/core";
 import { DailyRing, RingLegend } from "../components/Ring";
 import { TLink } from "../components/TLink";
@@ -50,7 +53,12 @@ export function TodayPage() {
   return (
     <motion.div variants={stagger} initial="hidden" animate="shown" className="space-y-6">
       <motion.header variants={rise}>
-        <p className="text-sm font-medium muted">{format(parseISO(today), "EEEE, d MMMM")}</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-medium muted">{format(parseISO(today), "EEEE, d MMMM")}</p>
+          <div className="md:hidden">
+            <SyncBadge />
+          </div>
+        </div>
         <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
           {greeting()}
           {settings.myName && settings.myName !== "Me" ? `, ${settings.myName.split(" ")[0]}` : ""}
@@ -95,6 +103,8 @@ export function TodayPage() {
           </Section>
         </motion.div>
       )}
+
+      <CalendarToday rise={rise} />
 
       {firstRun ? (
         <motion.div variants={rise}>
@@ -203,6 +213,34 @@ export function TodayPage() {
           </Section>
         </motion.div>
       )}
+    </motion.div>
+  );
+}
+
+/** Today's Google Calendar, cached from the last sync so it shows offline too. */
+function CalendarToday({ rise }: { rise: Variants }) {
+  const events = useLiveQuery(readCalendarToday, []);
+  if (!events?.length) return null;
+  const now = Date.now();
+  const time = (iso: string) => format(new Date(iso), "HH:mm");
+  return (
+    <motion.div variants={rise}>
+      <Section title="Calendar" icon="calendar" count={events.length}>
+        <div className="card divide-y divide-[var(--border)]">
+          {events.map((e) => {
+            const past = !e.allDay && Date.parse(e.end) < now;
+            const live = !e.allDay && Date.parse(e.start) <= now && Date.parse(e.end) >= now;
+            return (
+              <a key={e.id} href={e.link} target="_blank" rel="noreferrer" className={`flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--surface-2)] ${past ? "opacity-50" : ""}`}>
+                <span className="w-24 shrink-0 text-xs font-medium tabular-nums muted">{e.allDay ? "All day" : `${time(e.start)}–${time(e.end)}`}</span>
+                {live && <span className="size-2 shrink-0 animate-pulse rounded-full bg-emerald-500" />}
+                <span className="min-w-0 flex-1 truncate text-[15px]">{e.summary}</span>
+                {e.ours && <span className="text-[10px] font-semibold uppercase text-brand-600">FDD</span>}
+              </a>
+            );
+          })}
+        </div>
+      </Section>
     </motion.div>
   );
 }
