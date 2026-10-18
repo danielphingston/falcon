@@ -17,6 +17,7 @@ import { SettingsPage } from "./pages/Settings";
 import { NotFound } from "./pages/NotFound";
 import { TimePage } from "./pages/Time";
 import { ChatPage } from "./pages/Chat";
+import { CalendarPage } from "./pages/Calendar";
 import { ReportsPage } from "./pages/Reports";
 import { ProgressPage } from "./pages/Progress";
 import { MorePage } from "./pages/More";
@@ -42,6 +43,7 @@ const router = createBrowserRouter(
         { path: "followups", element: <FollowUpsPage /> },
         { path: "review", element: <ReviewPage /> },
         { path: "chat", element: <ChatPage /> },
+        { path: "calendar", element: <CalendarPage /> },
         { path: "time", element: <TimePage /> },
         { path: "reports", element: <ReportsPage /> },
         { path: "progress", element: <ProgressPage /> },

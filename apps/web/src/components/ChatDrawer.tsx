@@ -22,8 +22,8 @@ export function ChatLauncher() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
-      const t = e.target as HTMLElement;
-      if (e.key === "c" && !e.metaKey && !e.ctrlKey && !t.closest("input, textarea, select, [contenteditable]")) {
+      const t = e.target as HTMLElement | null;
+      if (e.key === "c" && !e.metaKey && !e.ctrlKey && !t?.closest?.("input, textarea, select, [contenteditable]")) {
         e.preventDefault();
         if (wide) setOpen((o) => !o);
         else navigate("/chat");

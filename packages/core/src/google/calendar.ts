@@ -200,10 +200,15 @@ export function calendarClient(getToken: TokenGetter) {
 
     /** Everything on the primary calendar for one local day. */
     async listDay(date: string): Promise<DayEvent[]> {
+      return this.listRange(date, date);
+    },
+
+    /** Everything on the primary calendar between two local dates (inclusive). */
+    async listRange(from: string, to: string): Promise<DayEvent[]> {
       const items = await list({
         orderBy: "startTime",
-        timeMin: new Date(`${date}T00:00:00`).toISOString(),
-        timeMax: new Date(`${date}T23:59:59`).toISOString(),
+        timeMin: new Date(`${from}T00:00:00`).toISOString(),
+        timeMax: new Date(`${to}T23:59:59`).toISOString(),
       });
       return items.map((g) => ({
         id: g.id,

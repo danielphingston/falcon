@@ -22,6 +22,7 @@ import { Toaster } from "./ui";
 
 const nav: { to: string; label: string; icon: IconName }[] = [
   { to: "/", label: "Today", icon: "today" },
+  { to: "/calendar", label: "Calendar", icon: "calendar" },
   { to: "/engagements", label: "Engagements", icon: "briefcase" },
   { to: "/followups", label: "Follow-ups", icon: "inbox" },
   { to: "/review", label: "Review", icon: "review" },
@@ -32,7 +33,9 @@ const nav: { to: string; label: string; icon: IconName }[] = [
   { to: "/people", label: "People", icon: "users" },
   { to: "/settings", label: "Settings", icon: "settings" },
 ];
-const moreRoutes = ["/more", "/chat", "/time", "/reports", "/progress", "/people", "/settings"];
+const moreRoutes = ["/more", "/review", "/chat", "/time", "/reports", "/progress", "/people", "/settings"];
+/** Phone tab bar: the first four plus More. */
+const phoneTabs = ["/", "/calendar", "/engagements", "/followups"];
 
 const isActive = (path: string, to: string) => (to === "/" ? path === "/" : path.startsWith(to));
 
@@ -95,7 +98,7 @@ export function Layout() {
         {/* Bottom tab bar (phone) */}
         <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--border)] bg-[var(--surface)]/90 backdrop-blur-lg safe-bottom md:hidden">
           <div className="grid grid-cols-5">
-            {nav.slice(0, 4).map((n) => (
+            {nav.filter((n) => phoneTabs.includes(n.to)).map((n) => (
               <TabLink key={n.to} {...n} active={isActive(pathname, n.to)} />
             ))}
             <TabLink to="/more" label="More" icon="more" active={moreRoutes.some((r) => pathname.startsWith(r))} />
@@ -243,8 +246,8 @@ function useUpdatePrompt() {
 function useShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement;
-      if (e.metaKey || e.ctrlKey || e.altKey || t.closest("input, textarea, select, [contenteditable]")) return;
+      const t = e.target as HTMLElement | null;
+      if (e.metaKey || e.ctrlKey || e.altKey || t?.closest?.("input, textarea, select, [contenteditable]")) return;
       if (e.key === "n") {
         e.preventDefault();
         openEditor({ table: "tasks" });
