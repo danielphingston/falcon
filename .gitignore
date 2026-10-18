@@ -6,3 +6,6 @@ dev-dist/
 .env
 .env.*
 !.env.example
+video/out/
+video/node_modules/
+.claude/scheduled_tasks.lock

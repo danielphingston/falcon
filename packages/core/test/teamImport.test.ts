@@ -151,6 +151,14 @@ describe("team allocation import", () => {
     expect(after.team).toEqual([id("Meena")]);
   });
 
+  it("a single sheet without members still offers names and guesses the lead", () => {
+    const a = parseTeamAllocation([sheets[0]]);
+    expect(a.members.map((m) => m.name)).toContain("PK");
+    expect(a.members.some((m) => m.name === "Arun BY")).toBe(false); // variants merged
+    expect(a.suggestedMe).toBe("PK"); // leads 3 of 4
+    expect(a.membersInferred).toBe(true);
+  });
+
   it("explains unrecognised layouts", () => {
     expect(() => parseTeamAllocation([{ name: "x", rows: [["a", "b"], ["1", "2"]] }])).toThrow(/assignments table/);
   });

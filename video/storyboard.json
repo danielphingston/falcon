@@ -1,0 +1,121 @@
+{
+  "title": "FDD Tracker: feature tour",
+  "resolution": [1280, 720],
+  "notes": "Each scene: 'caption' is the on-screen guide text (short), 'narration' is spoken. 'show' tells the recorder what to do on screen while the narration plays. Use only the app's sample data and the fictional sample sheet in video/assets.",
+  "scenes": [
+    {
+      "id": "01-intro",
+      "caption": "FDD Tracker: your day, in one place",
+      "narration": "This is FDD Tracker, a personal work tracker built for a chartered accountant leading a financial due diligence team. It runs as an app on your laptop and iPhone, works offline, and keeps your data on your own devices.",
+      "show": "Open the app at / with a fresh profile (empty Welcome screen). Hold."
+    },
+    {
+      "id": "02-sample",
+      "caption": "Settings → Sample data → Load",
+      "narration": "To look around, open Settings and load the sample data. It adds two demo engagements, a team, information requests and work papers. One tap of Undo removes it all again.",
+      "show": "Go to Settings, scroll to Data, click Sample data 'Load'. Then go to Today."
+    },
+    {
+      "id": "03-today",
+      "caption": "Today: what's overdue, due, to chase and to review",
+      "narration": "Today is your home screen. At the top you see what's overdue, due today, who to chase and what's waiting for your review. The daily ring tracks due items, chases and focus sessions.",
+      "show": "Today page. Slowly scroll down through Overdue, Due today, Chase today, Waiting for my review, then back to top."
+    },
+    {
+      "id": "04-quickadd",
+      "caption": "Quick add: @person  #engagement  !date  at 3pm",
+      "narration": "Quick add understands short-hand. Type a task, mention a person with at, an engagement with hash, and a date or time. A task with a time goes straight onto your Google Calendar.",
+      "show": "Click the quick add box and type slowly: 'Call Rahul re TB #Falcon !tom@3pm'. Pause on the chips, then press Enter."
+    },
+    {
+      "id": "05-complete",
+      "caption": "Tick it off: confetti, and Undo is always one tap away",
+      "narration": "Finish something and tick it off. Every change can be undone from the toast at the bottom.",
+      "show": "On Today, click the checkbox of the first item under Due today (a task). Let the confetti and the 'Task done · Undo' toast show."
+    },
+    {
+      "id": "06-chase",
+      "caption": "Chase today: one tap logs the chase and sets the next date",
+      "narration": "Chasing clients is built in. Tap Chased and the app logs it and schedules the next chase, skipping weekends and holidays.",
+      "show": "Scroll to 'Chase today' on Today and click one 'Chased' button."
+    },
+    {
+      "id": "07-engagements",
+      "caption": "Engagements: type, team and progress at a glance",
+      "narration": "Engagements shows every assignment with its type, status, team and progress on the information request list.",
+      "show": "Go to Engagements. Hover over the Project Falcon card."
+    },
+    {
+      "id": "08-import",
+      "caption": "Import your team allocation sheet from Excel",
+      "narration": "If your team allocation lives in Excel, import it. The app reads the assignments, types, status and team members, works out who leads each one, and shows a preview before anything is saved. Importing again later updates instead of duplicating.",
+      "show": "Click 'Import' on Engagements. Upload video/assets/team-allocation-sample.csv into the file input. Show the preview (scroll it a little), then click the Import button."
+    },
+    {
+      "id": "09-engagement",
+      "caption": "Inside an engagement: team, key dates, tasks, work papers, IRL",
+      "narration": "Open an engagement to see its team, key dates and everything that belongs to it, organised in tabs.",
+      "show": "Open Project Falcon. Show Overview (team section), then click the Tasks tab."
+    },
+    {
+      "id": "10-irl",
+      "caption": "IRL: track items, copy a table for email, draft chase emails",
+      "narration": "The IRL tab tracks every information request. Copy the pending items as a table for an email, draft a chase email in one tap, or paste a whole list to add many items at once.",
+      "show": "Click the IRL tab of Project Falcon. Point at 'Copy pending table' and 'Email Rahul'. Scroll to the 'Add IRL items' box."
+    },
+    {
+      "id": "11-workpapers",
+      "caption": "Work papers and review points",
+      "narration": "Work papers track what you prepare and what you review, with review points inside each one. Clear a point and the app celebrates with you.",
+      "show": "Click the Work papers tab. Open the A.1 work paper. In its sheet, tick one open review point. Close the sheet."
+    },
+    {
+      "id": "12-followups",
+      "caption": "Waiting on: everything you're waiting for, by person",
+      "narration": "Follow-ups gathers everything you're waiting on, from clients, managers and your team, longest-waiting first.",
+      "show": "Go to Follow-ups. Click the 'Clients' and then 'All' filter."
+    },
+    {
+      "id": "13-calendar",
+      "caption": "Calendar: week by the hour, or the whole month",
+      "narration": "The calendar shows the week hour by hour, alongside your Google Calendar when you're signed in. Tap an empty slot to add a task at that time, or switch to the month view.",
+      "show": "Go to Calendar (week). Click the next-week arrow once, then click 'Month'."
+    },
+    {
+      "id": "14-time",
+      "caption": "Focus timer and a ready-made timesheet",
+      "narration": "Time and focus has a focus timer that keeps running even if you close the app, and a weekly timesheet by engagement that you can copy straight into your firm's timesheet tool.",
+      "show": "Go to Time & focus. Click 'Start focus'. Wait 2s, then click 'Discard'. Scroll to the Timesheet."
+    },
+    {
+      "id": "15-reports-progress",
+      "caption": "Reports and Progress",
+      "narration": "Reports summarise your day or week. Progress turns good habits into streaks, levels and badges, rewarding finished work and chasing, never long hours.",
+      "show": "Go to Reports (This week). Then go to Progress and scroll to Badges."
+    },
+    {
+      "id": "16-assistant",
+      "caption": "Assistant (demo replies): run your day by chatting",
+      "narration": "The assistant can do anything the app can. Ask it to plan your day, add tasks or log chases, or paste a client email or a screenshot. Every change it makes can be undone. In this video the replies are a scripted demo.",
+      "show": "Go to Assistant. Type 'Plan my day' and send. (Gemini replies are mocked; see recorder notes.) Let the reply stream."
+    },
+    {
+      "id": "17-settings",
+      "caption": "Settings: Google sync, Calendar, AI sign-in, backups",
+      "narration": "In Settings, connect Google to sync between your laptop and iPhone through your own Google Drive and to add reminders to your calendar. Choose how the assistant signs in, set your working week, and export a backup any time.",
+      "show": "Go to Settings. Slowly scroll from the top (Google sync & Calendar, AI assistant) down to Data."
+    },
+    {
+      "id": "18-install",
+      "caption": "Install on iPhone: Safari → Share → Add to Home Screen",
+      "narration": "To install on an iPhone, open the link in Safari, tap Share, then Add to Home Screen. On Windows, use the install button in Chrome or Edge's address bar.",
+      "show": "Switch the page to a phone-sized viewport (390x844) on Today, centred on a dark background. Hold."
+    },
+    {
+      "id": "19-outro",
+      "caption": "danielphingston.github.io/falcon",
+      "narration": "That's FDD Tracker. Everything stays yours, works offline, and syncs when you're ready.",
+      "show": "Back to desktop size on Today. Hold, then fade."
+    }
+  ]
+}

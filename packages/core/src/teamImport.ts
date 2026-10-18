@@ -33,6 +33,8 @@ export interface Allocation {
   members: AllocationMember[];
   /** A member marked "Team Lead" (probably the person using the app). */
   suggestedMe?: string;
+  /** True when there was no members table and the list came from the team columns. */
+  membersInferred?: boolean;
 }
 
 const clean = (s: string | undefined) => (s ?? "").replace(/\s+/g, " ").trim();
@@ -98,7 +100,18 @@ export function parseTeamAllocation(sheets: SheetData[]): Allocation {
   if (!assignments.length)
     throw new Error("Couldn't find an assignments table. Expected a header row with an Assignment (or Client) column and Team columns.");
   const lead = members.find((m) => /lead|manager|partner|director/i.test(m.designation ?? ""));
-  return { assignments, members, suggestedMe: lead?.name };
+  if (lead) return { assignments, members, suggestedMe: lead.name };
+
+  // No members table (e.g. a single-sheet CSV): offer the names from the team
+  // columns, and guess "me" as whoever leads the most assignments.
+  if (!members.length) {
+    const seen = new Map<string, number>();
+    for (const a of assignments) a.team.forEach((n, i) => seen.set(n, (seen.get(n) ?? 0) + (i === 0 ? 1 : 0)));
+    for (const n of seen.keys()) if (!matchName(n, members)) members.push({ name: n });
+    const top = [...seen.entries()].sort((a, b) => b[1] - a[1])[0];
+    return { assignments, members, membersInferred: true, suggestedMe: top && top[1] > 1 ? top[0] : undefined };
+  }
+  return { assignments, members };
 }
 
 /**
@@ -175,7 +188,7 @@ export function planTeamImport(alloc: Allocation, snap: Snapshot, me?: string): 
     let p = matchName(raw, people);
     if (!p) {
       p = add(raw);
-      if (alloc.members.length && !p.existingId) warnings.push(`"${raw}" is on an assignment but not in the members list. Added as a new team member.`);
+      if (alloc.members.length && !alloc.membersInferred && !p.existingId) warnings.push(`"${raw}" is on an assignment but not in the members list. Added as a new team member.`);
     }
     return p.key;
   };
