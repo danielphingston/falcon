@@ -3,6 +3,9 @@ import { createRoot } from "react-dom/client";
 import { createBrowserRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
 import "./index.css";
+import { finishRedirectSignIn } from "./lib/google";
+import { syncNow } from "./lib/sync";
+import { toast } from "./lib/toast";
 import { Layout } from "./components/Layout";
 import { TodayPage } from "./pages/Today";
 import { EngagementsPage } from "./pages/Engagements";
@@ -17,6 +20,15 @@ import { ChatPage } from "./pages/Chat";
 import { ReportsPage } from "./pages/Reports";
 import { ProgressPage } from "./pages/Progress";
 import { MorePage } from "./pages/More";
+
+// Returning from Google's redirect sign-in: this strips the token from the URL
+// synchronously, so it must run before the router reads the location.
+void finishRedirectSignIn().then((r) => {
+  if (r === null) return;
+  if (typeof r === "string") return void toast({ message: r, tone: "error", duration: 8000 });
+  toast({ message: `Connected as ${r.email ?? "your Google account"}`, tone: "success" });
+  void syncNow();
+});
 
 const router = createBrowserRouter(
   [

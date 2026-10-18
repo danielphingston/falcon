@@ -74,25 +74,102 @@ function loadGis(): Promise<Gis> {
   return gisLoading;
 }
 
-/** Opens Google's consent popup. Must be called from a click. */
-export async function connectGoogle(): Promise<GoogleAuth> {
-  const clientId = await googleClientId();
-  if (!clientId) throw new Error("Add your Google OAuth client ID first");
-  const gis = await loadGis();
-  const previous = await readAuth();
-  // Gemini access is only requested when the assistant is set to use the Google sign-in.
-  const scopes = (await getSettings()).geminiAuth === "google" ? [...GOOGLE_SCOPES, GEMINI_OAUTH_SCOPE] : [...GOOGLE_SCOPES];
-  const response = await new Promise<TokenResponse>((resolve, reject) => {
-    const client = gis.accounts.oauth2.initTokenClient({
-      client_id: clientId,
-      scope: scopes.join(" "),
-      callback: (r) => (r.error ? reject(new Error(r.error_description || r.error)) : resolve(r)),
-      error_callback: (e) => reject(new Error(e.type === "popup_closed" ? "Sign-in window was closed" : e.message || e.type)),
-    });
-    client.requestAccessToken(previous?.email ? { prompt: "", login_hint: previous.email } : { prompt: "consent" });
+// ---------- Sign-in ----------
+//
+// Safari only allows a popup when it opens synchronously inside the tap, so
+// everything the popup needs (Google's script, client ID, scopes, last email)
+// is loaded ahead of time by warmGoogle(), and connectGoogle() opens it with
+// no await in between. iPhone home-screen apps can't use popups reliably, so
+// there (or if a popup is blocked) we fall back to a full-page redirect.
+
+interface Prepared {
+  gis: Gis | null;
+  clientId: string;
+  scopes: string[];
+  email?: string;
+}
+let prepared: Prepared | null = null;
+let warming: Promise<void> | null = null;
+
+/** Loads what sign-in needs. Call on startup and whenever the client ID or AI sign-in setting changes. */
+export function warmGoogle(): Promise<void> {
+  warming = (async () => {
+    const clientId = await googleClientId();
+    if (!clientId) {
+      prepared = null;
+      return;
+    }
+    const settings = await getSettings();
+    const previous = await readAuth();
+    // Gemini access is only requested when the assistant is set to use the Google sign-in.
+    const scopes = settings.geminiAuth === "google" ? [...GOOGLE_SCOPES, GEMINI_OAUTH_SCOPE] : [...GOOGLE_SCOPES];
+    prepared = { gis: null, clientId, scopes, email: previous?.email };
+    try {
+      prepared.gis = await loadGis();
+    } catch {
+      /* offline; redirect sign-in still works once back online */
+    }
+  })();
+  return warming;
+}
+
+/** True in an app added to the iPhone/iPad home screen. */
+const isIosStandalone = () => (navigator as Navigator & { standalone?: boolean }).standalone === true;
+
+const redirectUri = () => `${location.origin}${import.meta.env.BASE_URL}`;
+const REDIRECT_STATE = "fdd-oauth-state";
+
+function startRedirectSignIn(p: Prepared) {
+  const state = crypto.randomUUID();
+  localStorage.setItem(REDIRECT_STATE, JSON.stringify({ state, back: location.pathname + location.search }));
+  const q = new URLSearchParams({
+    client_id: p.clientId,
+    redirect_uri: redirectUri(),
+    response_type: "token",
+    scope: p.scopes.join(" "),
+    include_granted_scopes: "true",
+    state,
+    ...(p.email ? { login_hint: p.email } : { prompt: "consent" }),
   });
-  const accessToken = response.access_token!;
-  let email = previous?.email;
+  location.assign(`https://accounts.google.com/o/oauth2/v2/auth?${q}`);
+}
+
+/**
+ * Starts Google sign-in. Call it directly from a tap/click handler, before any
+ * other await. Resolves with the new sign-in, or null when the page is
+ * navigating to Google (redirect flow; finishRedirectSignIn completes it).
+ */
+export function connectGoogle(): Promise<GoogleAuth | null> {
+  const p = prepared;
+  if (!p) {
+    void warmGoogle();
+    return Promise.reject(new Error(warming ? "Google sign-in is still loading. Tap again in a moment." : "Add your Google OAuth client ID first"));
+  }
+  if (!p.gis || isIosStandalone()) {
+    startRedirectSignIn(p);
+    return Promise.resolve(null);
+  }
+  return new Promise<GoogleAuth | null>((resolve, reject) => {
+    const client = p.gis!.accounts.oauth2.initTokenClient({
+      client_id: p.clientId,
+      scope: p.scopes.join(" "),
+      callback: (r) => (r.error ? reject(new Error(r.error_description || r.error)) : resolve(saveToken(r, p.email))),
+      error_callback: (e) => {
+        if (e.type === "popup_failed_to_open") {
+          // Blocked anyway (strict browser settings): use the redirect instead.
+          startRedirectSignIn(p);
+          resolve(null);
+        } else reject(new Error(e.type === "popup_closed" ? "Sign-in window was closed" : e.message || e.type));
+      },
+    });
+    // Synchronous with the user's tap; no await before this line.
+    client.requestAccessToken(p.email ? { prompt: "", login_hint: p.email } : { prompt: "consent" });
+  });
+}
+
+async function saveToken(r: TokenResponse, previousEmail?: string): Promise<GoogleAuth> {
+  const accessToken = r.access_token!;
+  let email = previousEmail;
   try {
     const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", { headers: { Authorization: `Bearer ${accessToken}` } });
     if (res.ok) email = ((await res.json()) as { email?: string }).email ?? email;
@@ -101,12 +178,33 @@ export async function connectGoogle(): Promise<GoogleAuth> {
   }
   const auth: GoogleAuth = {
     accessToken,
-    expiresAt: Date.now() + Number(response.expires_in ?? 3600) * 1000,
+    expiresAt: Date.now() + Number(r.expires_in ?? 3600) * 1000,
     email,
-    scope: response.scope ?? "",
+    scope: r.scope ?? "",
   };
   await db.meta.put({ key: KEY, value: auth });
+  if (prepared) prepared.email = email;
   return auth;
+}
+
+/**
+ * Completes a redirect sign-in when Google sends the user back with the token
+ * in the URL fragment. Returns the sign-in, an error message, or null if this
+ * page load isn't a sign-in return. Removes the token from the address bar.
+ */
+export async function finishRedirectSignIn(): Promise<GoogleAuth | string | null> {
+  if (!/[#&](access_token|error)=/.test(location.hash)) return null;
+  const params = new URLSearchParams(location.hash.slice(1));
+  const saved = JSON.parse(localStorage.getItem(REDIRECT_STATE) ?? "null") as { state: string; back: string } | null;
+  localStorage.removeItem(REDIRECT_STATE);
+  history.replaceState(null, "", saved?.back ?? location.pathname);
+  if (!saved || params.get("state") !== saved.state) return "Sign-in didn't match a request from this app. Please try again.";
+  if (params.get("error")) return params.get("error") === "access_denied" ? "Google sign-in was cancelled" : `Google sign-in failed: ${params.get("error")}`;
+  const previous = await readAuth();
+  return saveToken(
+    { access_token: params.get("access_token") ?? undefined, expires_in: params.get("expires_in") ?? undefined, scope: params.get("scope") ?? "" },
+    previous?.email,
+  );
 }
 
 /** A still-valid token, or NeedsAuthError. Never opens a popup, so it's safe for background sync. */

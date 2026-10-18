@@ -15,6 +15,7 @@ import { LevelUpOverlay } from "./LevelUp";
 import { SyncBadge } from "./SyncBadge";
 import { ChatLauncher } from "./ChatDrawer";
 import { startAutoSync } from "../lib/sync";
+import { warmGoogle } from "../lib/google";
 import { Icon, type IconName } from "./Icon";
 import { TLink } from "./TLink";
 import { Toaster } from "./ui";
@@ -47,6 +48,8 @@ export function Layout() {
   useUpdatePrompt();
   useShortcuts();
   useEffect(() => startAutoSync(), []);
+  // Pre-load sign-in so tapping Connect can open Google's popup immediately (Safari).
+  useEffect(() => void warmGoogle(), [settings.googleClientId, settings.geminiAuth]);
   useEffect(() => {
     void requestPersistence();
     // Browser back/forward: slide the other way.

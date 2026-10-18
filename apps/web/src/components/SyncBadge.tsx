@@ -35,7 +35,8 @@ export function SyncBadge({ compact }: { compact?: boolean }) {
     if (s.state === "off") return navigate("/settings");
     if (s.state === "needs-auth") {
       try {
-        await connectGoogle();
+        // First await in the handler, so Safari still treats the popup as part of the tap.
+        if (!(await connectGoogle())) return; // redirecting to Google
       } catch (e) {
         return void toast({ message: e instanceof Error ? e.message : "Couldn't connect", tone: "error" });
       }

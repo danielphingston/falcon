@@ -9,7 +9,7 @@ import { useSettings } from "../lib/hooks";
 import { loadSampleData } from "../lib/sample";
 import { useLiveQuery } from "dexie-react-hooks";
 import { SyncBadge } from "../components/SyncBadge";
-import { connectGoogle, disconnectGoogle, hasScope, readAuth } from "../lib/google";
+import { connectGoogle, disconnectGoogle, hasScope, readAuth, warmGoogle } from "../lib/google";
 import { markSignedOut, scheduleSync, syncNow, useSyncStatus } from "../lib/sync";
 import { toast } from "../lib/toast";
 
@@ -218,10 +218,12 @@ function GoogleGroup({ s }: { s: Settings }) {
   const set = (patch: Partial<Settings>) => void saveSettings(patch).then(() => scheduleSync(500));
 
   const connect = async () => {
+    // connectGoogle must be the first await: Safari blocks popups opened after one.
+    const pending = connectGoogle();
     setBusy(true);
     try {
-      if (!builtIn && clientId.trim() !== s.googleClientId) await saveSettings({ googleClientId: clientId.trim() });
-      const a = await connectGoogle();
+      const a = await pending;
+      if (!a) return; // redirecting to Google
       const missing = [
         !hasScope(a, "https://www.googleapis.com/auth/drive.appdata") && "Drive sync",
         !hasScope(a, "https://www.googleapis.com/auth/calendar.events") && "Calendar",
@@ -251,11 +253,17 @@ function GoogleGroup({ s }: { s: Settings }) {
           </div>
           {!builtIn && (
             <Row label="OAuth client ID" hint="From Google Cloud. See README → Google setup">
-              <input className="input max-w-72 font-mono text-xs" placeholder="1234-abc.apps.googleusercontent.com" value={clientId} onChange={(e) => setClientId(e.target.value)} />
+              <input
+                className="input max-w-72 font-mono text-xs"
+                placeholder="1234-abc.apps.googleusercontent.com"
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                onBlur={() => clientId.trim() !== s.googleClientId && void saveSettings({ googleClientId: clientId.trim() }).then(() => warmGoogle())}
+              />
             </Row>
           )}
           <div className="px-4 py-3">
-            <button className="btn btn-primary w-full sm:w-auto" onClick={connect} disabled={busy || (!builtIn && !clientId.trim())}>
+            <button className="btn btn-primary w-full sm:w-auto" onClick={connect} disabled={busy || (!builtIn && (!clientId.trim() || clientId.trim() !== s.googleClientId))}>
               <Icon name="cloud" size={16} /> {busy ? "Connecting…" : "Connect Google account"}
             </button>
           </div>
