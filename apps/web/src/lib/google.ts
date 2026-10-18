@@ -79,8 +79,9 @@ function loadGis(): Promise<Gis> {
 // Safari only allows a popup when it opens synchronously inside the tap, so
 // everything the popup needs (Google's script, client ID, scopes, last email)
 // is loaded ahead of time by warmGoogle(), and connectGoogle() opens it with
-// no await in between. iPhone home-screen apps can't use popups reliably, so
-// there (or if a popup is blocked) we fall back to a full-page redirect.
+// no await in between. Safari and iOS can't complete the popup flow (see
+// prefersRedirectSignIn), so there, or if a popup is blocked, we use a
+// full-page redirect instead.
 
 interface Prepared {
   gis: Gis | null;
@@ -113,8 +114,19 @@ export function warmGoogle(): Promise<void> {
   return warming;
 }
 
-/** True in an app added to the iPhone/iPad home screen. */
-const isIosStandalone = () => (navigator as Navigator & { standalone?: boolean }).standalone === true;
+/**
+ * Where Google's popup sign-in is unreliable: Safari on any device, every
+ * browser on iPhone/iPad (all WebKit), and home-screen apps. There the popup
+ * finishes consent but can't hand the token back (it spins forever after
+ * "Continue"), so we use the redirect flow instead.
+ */
+export function prefersRedirectSignIn(): boolean {
+  const ua = navigator.userAgent;
+  const standalone = (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1); // iPadOS reports as Mac
+  const safari = /Safari\//.test(ua) && !/Chrome\/|Chromium\/|CriOS\/|FxiOS\/|Edg\/|EdgiOS\/|OPR\//.test(ua);
+  return standalone || ios || safari;
+}
 
 const redirectUri = () => `${location.origin}${import.meta.env.BASE_URL}`;
 const REDIRECT_STATE = "fdd-oauth-state";
@@ -145,7 +157,7 @@ export function connectGoogle(): Promise<GoogleAuth | null> {
     void warmGoogle();
     return Promise.reject(new Error(warming ? "Google sign-in is still loading. Tap again in a moment." : "Add your Google OAuth client ID first"));
   }
-  if (!p.gis || isIosStandalone()) {
+  if (!p.gis || prefersRedirectSignIn()) {
     startRedirectSignIn(p);
     return Promise.resolve(null);
   }

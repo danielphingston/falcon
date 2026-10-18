@@ -8,6 +8,10 @@ const base = process.env.BASE_PATH ?? "/";
 
 export default defineConfig({
   base,
+  define: {
+    // Shown in Settings so you can tell which version a device is running.
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: [
     react(),
     tailwindcss(),

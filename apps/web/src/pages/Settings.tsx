@@ -204,7 +204,7 @@ export function SettingsPage() {
           </button>
         </Row>
       </Group>
-      <p className="pb-4 text-center text-xs muted">FDD Tracker · Phase 3</p>
+      <p className="pb-4 text-center text-xs muted">FDD Tracker · version {new Date(__BUILD_TIME__).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</p>
     </div>
   );
 }
