@@ -52,7 +52,7 @@ export function Layout() {
   useShortcuts();
   useEffect(() => startAutoSync(), []);
   // Pre-load sign-in so tapping Connect can open Google's popup immediately (Safari).
-  useEffect(() => void warmGoogle(), [settings.googleClientId, settings.geminiAuth]);
+  useEffect(() => void warmGoogle(), [settings.googleClientId]);
   useEffect(() => {
     void requestPersistence();
     // Browser back/forward: slide the other way.

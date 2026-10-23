@@ -172,7 +172,7 @@ Use **New chat** to start again. Chat history stays on this device.
 
 **Google sync & Calendar:** tap **Connect Google account**. Then tick what goes to your Google Calendar: **Reminders → Calendar**, **Key dates → Calendar**, **Due dates → Calendar**. Use **Sync now** to sync straight away.
 
-**AI assistant (Gemini):** under **Sign in with**, choose **Google** (tap **Allow Gemini**, which needs billing on the Google Cloud project) or **API key** (paste the key from Google AI Studio and tap **Save**). Then tap **Check** to test the connection.
+**AI assistant (Gemini):** it uses your Google sign-in. Tap **Allow Gemini** (this needs billing on the Google Cloud project), then tap **Check** to test the connection.
 
 **Working week, look & feel, time & progress:** working days, holidays, chase frequency, theme, focus targets and timesheet rounding.
 
@@ -182,9 +182,8 @@ Use **New chat** to start again. Chat history stays on this device.
 
 - **Data stays on your devices.** With Google connected, it syncs through a hidden app folder in your own Google Drive that only this app can read.
 - **Calendar.** The app changes only the events it created.
-- **AI assistant.** Messages and attachments you send go to Google's Gemini API. Use a billing-enabled project or key so Google does not use them to improve its products.
+- **AI assistant.** Messages and attachments you send go to Google's Gemini API. Use a billing-enabled Google Cloud project so Google does not use them to improve its products.
 - **Client information.** Check your firm's policy before sharing client documents with the assistant. For real client data, use a billing-enabled Gemini project.
-- **API keys** stay on the device where you entered them. They are never included in backups or sync.
 - **Back up regularly** with **Export**, especially before erasing data or changing devices.
 
 ## Troubleshooting
@@ -192,4 +191,4 @@ Use **New chat** to start again. Chat history stays on this device.
 - **"Reconnect Google" on the sync chip.** Google sign-in lasts about an hour, and browsers cannot renew it silently. Tap the chip (or **Reconnect** in Settings). Your data stays on the device meanwhile.
 - **Safari sign-in leaves the app.** Safari signs you in by redirecting the page to Google and back, not by a pop-up. This is expected.
 - **New version not showing.** Close the app completely and reopen it. The version is at the bottom of **Settings**.
-- **Gemini permission errors.** Switch to the **API key** option in Settings.
+- **Gemini permission errors.** Tap **Allow Gemini** in Settings to reconnect Google with the Gemini permission, and check that the Generative Language API and billing are enabled in your Google Cloud project.

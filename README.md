@@ -2,7 +2,7 @@
 
 A personal PWA for a CA in Financial Due Diligence: engagements, work papers, review points, IRLs, follow-ups and reminders. It works offline and keeps its data on the device. See [PLAN.md](PLAN.md) for the full roadmap.
 
-**Status:** Phases 0–3 done: tracking, focus timer, timesheet, reports, light gamification, plus Google Drive sync and Google Calendar (reminders, key dates, due dates, focus blocks, today's agenda). Phase 4 adds the Gemini assistant (Google sign-in or API key). Next: the Claude connector.
+**Status:** Phases 0–3 done: tracking, focus timer, timesheet, reports, light gamification, plus Google Drive sync and Google Calendar (reminders, key dates, due dates, focus blocks, today's agenda). Phase 4 adds the Gemini assistant (Google sign-in). Next: the Claude connector.
 
 ## Run it
 
@@ -81,23 +81,15 @@ Then tap **Connect Google account**. Things to expect:
 
 The assistant can do anything the app can: add tasks, log chases, turn a pasted client email or IRL screenshot into IRL items, log time, plan the day. Every change it makes has **Undo**, and deletes always ask first. You can open it from the ✨ button on any screen (`C` on a laptop), and use dictation or attach images/PDFs.
 
-Choose how it signs in under **Settings → AI assistant**:
+It signs in with your Google account (no API key to manage):
 
-**Google sign-in (default, no key to manage)**
 1. In the same Google Cloud project as above, enable the **Generative Language API**, and make sure **billing** is enabled on the project (usage is billed there; a personal Gemini/Google AI subscription doesn't apply).
 2. Under **Google Auth Platform → Data access**, add the scope `.../auth/generative-language.retriever`.
-3. In the app: **Settings → AI assistant → Google**, then **Allow Gemini** (it reconnects Google with the extra permission).
+3. In the app: **Settings → AI assistant**, then **Allow Gemini** (it reconnects Google with the extra permission).
 
-Tested end to end with a real account on 2026-10-18: sign-in, Drive sync, Calendar events and Gemini chat all worked with the scope above. Google documents this OAuth route for Gemini mainly for testing, so if sign-in later gives permission errors, use an API key instead.
+Tested end to end with a real account on 2026-10-18: sign-in, Drive sync, Calendar events and Gemini chat all worked with the scope above.
 
 When you deploy, add the hosted URL to the OAuth client's **Authorized JavaScript origins**, and set `VITE_GOOGLE_CLIENT_ID` for the build.
-
-**API key (fallback)**
-1. Go to [aistudio.google.com](https://aistudio.google.com) → **Get API key**. Turn on billing for that key's project, so prompts aren't used to improve Google's products.
-2. Optionally, in Google Cloud → Credentials, restrict the key to the Generative Language API and to your site's address.
-3. In the app: **Settings → AI assistant → API key**, paste it, **Save**, then **Check**.
-
-The key is stored only in that device's IndexedDB. It is never included in backups or Drive sync.
 
 ## Installing on devices
 

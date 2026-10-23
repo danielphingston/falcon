@@ -144,12 +144,20 @@ await page.goto(BASE + '/settings');
 await page.waitForLoadState('networkidle').catch(() => {});
 await sleep(800);
 await guard('setup', async () => {
-  const sec = page.getByText('AI assistant (Gemini)').first();
-  await sec.scrollIntoViewIfNeeded();
-  await page.getByRole('button', { name: 'API key', exact: true }).click();
-  await page.getByLabel('Gemini API key').fill('demo-key');
-  const input = page.getByLabel('Gemini API key');
-  await input.locator('xpath=ancestor::*[.//button[normalize-space()="Save"]][1]').getByRole('button', { name: 'Save', exact: true }).click();
+  // The assistant only uses the Google sign-in, so seed a fake one with the Gemini scope (requests are mocked above).
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    const open = indexedDB.open('fdd-tracker');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const tx = open.result.transaction('meta', 'readwrite');
+      tx.objectStore('meta').put({
+        key: 'googleAuth',
+        value: { accessToken: 'demo-token', expiresAt: Date.now() + 6 * 3600_000, email: 'demo@example.com', scope: 'https://www.googleapis.com/auth/generative-language.retriever' },
+      });
+      tx.oncomplete = () => { open.result.close(); resolve(); };
+      tx.onerror = () => reject(tx.error);
+    };
+  }));
   await sleep(500);
 });
 await page.goto(BASE + '/');

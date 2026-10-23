@@ -36,6 +36,10 @@ class FddDB extends Dexie {
       days: "id, date",
       achievements: "id, badge",
     });
+    // The assistant now only signs in with Google; forget any Gemini API key saved earlier.
+    this.version(3)
+      .stores({})
+      .upgrade((tx) => tx.table("meta").delete("geminiKey"));
   }
 }
 

@@ -123,15 +123,12 @@ describe("Gemini adapter", () => {
     const req = { contents: [{ role: "user" as const, parts: [{ text: "hi" }] }], systemInstruction: "sys", functionDeclarations: geminiFunctionDeclarations() };
 
     const parts: GPart[] = [];
-    for await (const c of geminiRestStream({ apiKey: "k1" }, "gemini-3.8-flash")(req)) parts.push(...c.parts);
+    for await (const c of geminiRestStream({ accessToken: async () => "tok" }, "gemini-3.8-flash")(req)) parts.push(...c.parts);
     expect(parts.map((p) => p.text ?? p.functionCall?.name)).toEqual(["Hel", "lo", "get_today"]);
     expect(seen[0].url).toContain("/models/gemini-3.8-flash:streamGenerateContent?alt=sse");
-    expect(seen[0].headers["x-goog-api-key"]).toBe("k1");
+    expect(seen[0].headers.Authorization).toBe("Bearer tok");
     expect(seen[0].body.systemInstruction).toEqual({ parts: [{ text: "sys" }] });
-
-    for await (const _ of geminiRestStream({ accessToken: async () => "tok" }, "m")(req)) void _;
-    expect(seen[1].headers.Authorization).toBe("Bearer tok");
-    expect(seen[1].headers["x-goog-api-key"]).toBeUndefined();
+    expect(seen[0].headers["x-goog-api-key"]).toBeUndefined();
     vi.unstubAllGlobals();
   });
 

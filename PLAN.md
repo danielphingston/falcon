@@ -78,7 +78,7 @@ The "follow up" requirements map onto the model like this:
 5. **Time**: focus timer (25/50 min or custom, linked to a task), day log, weekly timesheet grid (engagement × day), "Copy for timesheet" button
 6. **Reports**: daily and weekly summaries (done, overdue, hours per engagement, longest-waiting follow-ups), with copy/print
 7. **Chat** (Gemini): a full-screen chat, plus a floating chat button on every screen
-8. **Settings**: Google connect, sync status and "sync now", Gemini API key + model picker, Claude connector setup guide, notification permission, working days, default chase interval, animations and confetti on/off, gamification on/off + daily ring targets, export/import JSON, theme
+8. **Settings**: Google connect, sync status and "sync now", Gemini access (Google sign-in) + model picker, Claude connector setup guide, notification permission, working days, default chase interval, animations and confetti on/off, gamification on/off + daily ring targets, export/import JSON, theme
 
 ### Small features that matter for FDD
 - **One-tap "Chased"**: logs today in the chase log and moves the next chase date ahead by N working days (default 2)
@@ -184,8 +184,7 @@ One set of typed, provider-neutral tool definitions (zod schemas → JSON Schema
 Rules: bulk tools take arrays, so pasting 20 IRL items is one call. Every write goes into `ChangeLog` so it can be undone. Deletes and bulk changes return a confirmation request instead of applying straight away.
 
 ### In-app chat: Gemini API
-- He creates an API key in Google AI Studio and enables billing on it (paid tier). He pastes it in Settings. It's stored only in that device's IndexedDB and never included in the code or the Drive sync file
-- In AI Studio / Google Cloud, restrict the key to the Gemini API and to the PWA's domain (HTTP referrer restriction), so a leaked key is less useful to anyone else
+- Authenticates with the user's Google sign-in (OAuth scope `generative-language.retriever`); no API key. Usage is billed to the OAuth client's Google Cloud project, which needs the Generative Language API and billing enabled
 - Calls go straight from the browser using Google's official `@google/genai` JS SDK. Streaming responses, with function calling running in a client-side loop against the local DB
 - Model: the current Gemini **Flash** model for quick chat and tool calls, plus a **Pro** option in a Settings model picker. Pick the exact model IDs at build time from Google's current model list
 - System instruction: FDD vocabulary (IRL, QoE, NWC, WP refs), today's date and working days, and the confirm rules
@@ -266,7 +265,7 @@ CSV paste-import for IRLs, keyboard shortcuts, search, swipe gestures, onboardin
 - Google Cloud project + OAuth client (web), with the PWA domain and the Worker callback URL listed. His Gmail added as a test user
 - Hosted PWA URL, plus install steps for Windows (Chrome/Edge → Install app) and iPhone (Safari → Share → Add to Home Screen)
 - Connector URL + steps to add it in Claude → Settings → Connectors
-- How to create a Gemini API key in Google AI Studio, enable billing (paid tier), restrict the key to the PWA's domain, and set a budget alert in Google Cloud
+- How to enable the Generative Language API and billing in the Google Cloud project, add the Gemini OAuth scope, and set a budget alert
 - A one-page user guide in the app (Settings → Help), including example chat prompts
 
 ## 9. Open questions for your friend

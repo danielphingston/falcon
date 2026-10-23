@@ -1,7 +1,6 @@
 /**
- * In-app chat with Gemini, authenticated with the user's Google sign-in or an
- * API key. A key stays on this device (IndexedDB, never in backups or Drive
- * sync). Calls go straight from the browser to Google.
+ * In-app chat with Gemini, authenticated with the user's Google sign-in.
+ * Calls go straight from the browser to Google.
  */
 import { useSyncExternalStore } from "react";
 import {
@@ -91,16 +90,8 @@ async function persist() {
 
 // ---------- credentials & model ----------
 
-export const getGeminiKey = async () => ((await db.meta.get("geminiKey"))?.value as string | undefined) ?? "";
-export const setGeminiKey = async (key: string) => (key ? db.meta.put({ key: "geminiKey", value: key.trim() }) : db.meta.delete("geminiKey"));
-
 /** The credential the chat will use, or a sentence explaining what's missing. */
 export async function chatAuth(): Promise<GeminiAuth | string> {
-  const settings = await getSettings();
-  if (settings.geminiAuth === "key") {
-    const apiKey = await getGeminiKey();
-    return apiKey ? { apiKey } : "Add your Gemini API key in Settings → AI assistant to start chatting.";
-  }
   const auth = await readAuth();
   if (!auth) return "Sign in with Google in Settings → Google sync to use the assistant.";
   if (!hasScope(auth, GEMINI_OAUTH_SCOPE)) return "Your Google sign-in doesn't include Gemini access yet. Reconnect Google in Settings and allow it.";
@@ -111,12 +102,11 @@ export function friendlyError(e: unknown): string {
   const status = (e as { status?: number }).status;
   const msg = e instanceof Error ? e.message : String(e);
   if (e instanceof NeedsAuthError || status === 401) return "Your Google session expired. Tap Reconnect (Settings or the sync chip), then try again.";
-  if (/insufficient.*scope|ACCESS_TOKEN_SCOPE_INSUFFICIENT/i.test(msg)) return "Google sign-in lacks Gemini access. Reconnect Google in Settings, or switch the assistant to an API key.";
-  if (/SERVICE_DISABLED|has not been used in project|is disabled/i.test(msg)) return "The Generative Language API isn't enabled in your Google Cloud project. Enable it (see README → AI assistant), or use an API key.";
-  if (/API key not valid|API_KEY_INVALID/i.test(msg)) return "That Gemini API key isn't valid. Check it in Settings.";
-  if (status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(msg)) return "Gemini's rate limit or quota was reached. Wait a minute, or check billing in Google AI Studio.";
-  if (status === 403 || /PERMISSION_DENIED|referer|referrer/i.test(msg)) return "Gemini refused the request. If you restricted the key to certain websites, add this site's address.";
-  if (status === 404 || /not found/i.test(msg)) return "That Gemini model isn't available to this key. Pick another model in Settings.";
+  if (/insufficient.*scope|ACCESS_TOKEN_SCOPE_INSUFFICIENT/i.test(msg)) return "Google sign-in lacks Gemini access. Reconnect Google in Settings and allow it.";
+  if (/SERVICE_DISABLED|has not been used in project|is disabled/i.test(msg)) return "The Generative Language API isn't enabled in your Google Cloud project. Enable it (see README → AI assistant).";
+  if (status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(msg)) return "Gemini's rate limit or quota was reached. Wait a minute, or check billing in your Google Cloud project.";
+  if (status === 403 || /PERMISSION_DENIED|referer|referrer/i.test(msg)) return "Gemini refused the request. Check that the Generative Language API and billing are enabled in your Google Cloud project.";
+  if (status === 404 || /not found/i.test(msg)) return "That Gemini model isn't available to your account. Pick another model in Settings.";
   if (/Failed to fetch|NetworkError|network/i.test(msg)) return "Couldn't reach Gemini. Check your internet connection.";
   return msg.length > 300 ? `${msg.slice(0, 300)}…` : msg;
 }
