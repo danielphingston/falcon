@@ -1,5 +1,5 @@
 import confetti from "canvas-confetti";
-import type { Celebration } from "@fdd/core";
+import type { Celebration } from "@falcon/core";
 import { getSettings } from "../db";
 
 // Remember where the user last tapped, so bursts come from the checkbox they hit.

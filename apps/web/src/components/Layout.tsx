@@ -2,7 +2,7 @@ import { AnimatePresence, motion, MotionConfig } from "motion/react";
 import { useEffect } from "react";
 import { Outlet, useLocation } from "react-router";
 import { useRegisterSW } from "virtual:pwa-register/react";
-import { update } from "@fdd/core";
+import { update } from "@falcon/core";
 import { db, requestPersistence, store } from "../db";
 import { setNavDirection } from "../lib/act";
 import { celebrate } from "../lib/confetti";
@@ -68,7 +68,7 @@ export function Layout() {
         <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-1 border-r border-[var(--border)] bg-[var(--surface)] p-4 md:flex">
           <div className="mb-4 flex items-center gap-2.5 px-2">
             <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" className="size-8" />
-            <span className="text-lg font-bold tracking-tight">FDD Tracker</span>
+            <span className="text-lg font-bold tracking-tight">Falcon</span>
           </div>
           {nav.map((n) => {
             const active = isActive(pathname, n.to);
@@ -175,8 +175,8 @@ function useTimerWatcher() {
         try {
           const reg = await navigator.serviceWorker?.getRegistration();
           const body = `Focus session done: ${timer.durationMin} min${timer.label ? ` on ${timer.label}` : ""}. Take a short break.`;
-          if (reg) await reg.showNotification("FDD Tracker", { body, tag: "focus" });
-          else new Notification("FDD Tracker", { body, tag: "focus" });
+          if (reg) await reg.showNotification("Falcon", { body, tag: "focus" });
+          else new Notification("Falcon", { body, tag: "focus" });
         } catch {
           /* toast already shown */
         }
@@ -214,8 +214,8 @@ function useAlerts() {
         if ("Notification" in window && Notification.permission === "granted") {
           try {
             const reg = await navigator.serviceWorker?.getRegistration();
-            if (reg) await reg.showNotification("FDD Tracker", { body: a.title, icon: `${import.meta.env.BASE_URL}pwa-192x192.png`, tag: a.id });
-            else new Notification("FDD Tracker", { body: a.title, tag: a.id });
+            if (reg) await reg.showNotification("Falcon", { body: a.title, icon: `${import.meta.env.BASE_URL}pwa-192x192.png`, tag: a.id });
+            else new Notification("Falcon", { body: a.title, tag: a.id });
           } catch {
             /* toast already shown */
           }

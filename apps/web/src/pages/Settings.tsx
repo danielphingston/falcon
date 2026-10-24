@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from "react";
-import { BACKUP_VERSION, GEMINI_OAUTH_SCOPE, listGeminiModels, mergeRecords, parseBackup, tableNames, type Backup, type Settings } from "@fdd/core";
+import { BACKUP_VERSION, GEMINI_OAUTH_SCOPE, listGeminiModels, mergeRecords, parseBackup, tableNames, type Backup, type Settings } from "@falcon/core";
 import { chatAuth, clearChat, friendlyError } from "../lib/chat";
 import { Icon } from "../components/Icon";
 import { Segmented } from "../components/ui";
@@ -32,7 +32,7 @@ export function SettingsPage() {
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `fdd-tracker-backup-${backup.exportedAt.slice(0, 10)}.json`;
+    a.download = `falcon-backup-${backup.exportedAt.slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -206,7 +206,7 @@ export function SettingsPage() {
           <button
             className="btn btn-soft btn-sm text-rose-600"
             onClick={async () => {
-              if (!window.confirm("Erase all FDD Tracker data on this device? Export a backup first if you might need it.")) return;
+              if (!window.confirm("Erase all Falcon data on this device? Export a backup first if you might need it.")) return;
               await db.delete();
               location.reload();
             }}
@@ -216,7 +216,7 @@ export function SettingsPage() {
         </Row>
       </Group>
       <p className="pb-4 text-center text-xs muted">
-        FDD Tracker · version {new Date(__BUILD_TIME__).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+        Falcon · version {new Date(__BUILD_TIME__).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
         <br />
         <a className="underline" href={`${PAGES}about.html`}>About</a> · <a className="underline" href={`${PAGES}privacy.html`}>Privacy policy</a> ·{" "}
         <a className="underline" href={`${PAGES}terms.html`}>Terms of use</a>

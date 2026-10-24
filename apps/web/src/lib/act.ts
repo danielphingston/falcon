@@ -8,7 +8,7 @@ import {
   type Ctx,
   type Result,
   type TableName,
-} from "@fdd/core";
+} from "@falcon/core";
 import { store } from "../db";
 import { celebrate } from "./confetti";
 import { scheduleSync } from "./sync";

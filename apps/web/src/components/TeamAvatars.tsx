@@ -1,4 +1,4 @@
-import type { Person } from "@fdd/core";
+import type { Person } from "@falcon/core";
 
 export const initials = (name: string) =>
   name

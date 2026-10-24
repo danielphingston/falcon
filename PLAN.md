@@ -1,4 +1,4 @@
-# FDD Tracker — Plan
+# Falcon — Plan
 
 A personal PWA for a Chartered Accountant working in Financial Due Diligence (FDD) to run his day: engagements, work papers, review points, client info requests, follow-ups, alerts, calendar, time and focus. He can also run it entirely by chatting with Claude.
 

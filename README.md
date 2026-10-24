@@ -1,4 +1,4 @@
-# FDD Tracker
+# Falcon
 
 A personal PWA for a CA in Financial Due Diligence: engagements, work papers, review points, IRLs, follow-ups and reminders. It works offline and keeps its data on the device. See [PLAN.md](PLAN.md) for the full roadmap.
 
@@ -56,9 +56,9 @@ Also copy `dist/index.html` to `dist/404.html`, so deep links work on Pages.
 
 The app talks to Google straight from the browser, so it only needs an **OAuth client ID**. There's no secret and no server. This is a one-time setup, about 10 minutes.
 
-1. Go to [console.cloud.google.com](https://console.cloud.google.com) and create a project (e.g. "FDD Tracker").
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) and create a project (e.g. "Falcon").
 2. **APIs & Services → Library**: enable **Google Drive API** and **Google Calendar API**.
-3. **Google Auth Platform → Branding**: app name "FDD Tracker" plus a support email.
+3. **Google Auth Platform → Branding**: app name "Falcon" plus a support email.
    **Audience**: User type *External*, publishing status *Testing*. Under **Test users**, add the Gmail address(es) that will use the app. To let anyone sign in, see [Going public](#going-public-google-verification) below.
    **Data access**: add the scopes `.../auth/drive.appdata` and `.../auth/calendar.events`.
 4. **Clients → Create client → Web application**:
@@ -106,7 +106,7 @@ The app ships the pages Google checks, as static HTML in `apps/web/public/` (the
 If you change what the app does with Google data, update `privacy.html` and its date in the same change.
 
 1. **Branding**:
-   - App name `FDD Tracker` (the same as the home page heading; it must not contain "Google").
+   - App name `Falcon` (the same as the home page heading; it must not contain "Google").
    - App logo: a 120×120 PNG of `apps/web/public/favicon.svg`.
    - Support email and developer contact email.
    - **App domain**: the three URLs above.
@@ -114,7 +114,7 @@ If you change what the app does with Google data, update `privacy.html` and its 
 2. **Prove you own the domain** in [Google Search Console](https://search.google.com/search-console), signed in with the account that owns the Cloud project: add a *URL prefix* property for `https://danielphingston.github.io/` (the root, not `/falcon/`) and verify it with the HTML-file or meta-tag method in the `danielphingston.github.io` repo. One verification covers every project site under it.
 3. **Data access**: check the list is exactly `openid`, `.../auth/userinfo.email`, `.../auth/drive.appdata`, `.../auth/calendar.events` and `.../auth/generative-language.retriever`. Remove anything else: every extra scope has to be justified.
 4. **Scope justifications** (Google asks for one per sensitive scope; adjust if the app changes):
-   - `calendar.events`: *"FDD Tracker is a personal work tracker for financial due diligence. It creates, updates and deletes events on the user's primary calendar for their own deadlines, engagement key dates, reminders and focus blocks, so they get Calendar notifications. Each event is tagged with a private extended property, and the app only changes or deletes events with that tag. It also reads event titles and times on the primary calendar to show the user's day next to their tasks on the Today and Calendar screens. Narrower scopes don't cover this: read-only can't create reminders, and an app-created calendar can't show the user's existing meetings."*
+   - `calendar.events`: *"Falcon is a personal work tracker for financial due diligence. It creates, updates and deletes events on the user's primary calendar for their own deadlines, engagement key dates, reminders and focus blocks, so they get Calendar notifications. Each event is tagged with a private extended property, and the app only changes or deletes events with that tag. It also reads event titles and times on the primary calendar to show the user's day next to their tasks on the Today and Calendar screens. Narrower scopes don't cover this: read-only can't create reminders, and an app-created calendar can't show the user's existing meetings."*
    - `generative-language.retriever`: *"The optional in-app assistant calls the Gemini API with the user's own access token to turn their messages, pasted client emails and attached documents into tasks, follow-ups and IRL items in the app. Requests go straight from the browser to generativelanguage.googleapis.com, and the app keeps the conversation only on the user's device."*
 5. **Demo video**: an unlisted YouTube video, in English, showing:
    1. The home page, then the privacy policy link.

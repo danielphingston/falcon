@@ -19,8 +19,8 @@ export default defineConfig({
       registerType: "prompt",
       pwaAssets: { image: "public/favicon.svg", preset: "minimal-2023", overrideManifestIcons: true },
       manifest: {
-        name: "FDD Tracker",
-        short_name: "FDD Tracker",
+        name: "Falcon",
+        short_name: "Falcon",
         description: "Engagements, work papers, IRLs and follow-ups for financial due diligence.",
         theme_color: "#4f46e5",
         background_color: "#f8fafc",

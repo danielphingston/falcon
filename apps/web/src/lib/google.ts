@@ -3,7 +3,7 @@
  * the browser: access tokens last ~1 hour, there are no refresh tokens, so when
  * one expires the user taps "Reconnect" (a popup needs a user gesture).
  */
-import { GEMINI_OAUTH_SCOPE, GOOGLE_SCOPES } from "@fdd/core";
+import { GEMINI_OAUTH_SCOPE, GOOGLE_SCOPES } from "@falcon/core";
 import { db, getSettings } from "../db";
 
 interface TokenResponse {
@@ -127,7 +127,7 @@ export function prefersRedirectSignIn(): boolean {
 }
 
 const redirectUri = () => `${location.origin}${import.meta.env.BASE_URL}`;
-const REDIRECT_STATE = "fdd-oauth-state";
+const REDIRECT_STATE = "falcon-oauth-state";
 
 function startRedirectSignIn(p: Prepared) {
   const state = crypto.randomUUID();

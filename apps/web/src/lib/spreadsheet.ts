@@ -3,7 +3,7 @@
  * values (formulas give their cached result); ignores styles, charts and
  * macros. Uses the browser's DecompressionStream (Chrome 103+, Safari 16.4+).
  */
-import type { SheetData } from "@fdd/core";
+import type { SheetData } from "@falcon/core";
 
 const MAX_BYTES = 20 * 1024 * 1024;
 

@@ -17,7 +17,7 @@ import {
   type GPart,
   type GeminiAuth,
   type ToolCallResult,
-} from "@fdd/core";
+} from "@falcon/core";
 import { db, getSettings, store } from "../db";
 import { celebrate } from "./confetti";
 import { NeedsAuthError, getAccessToken, hasScope, readAuth } from "./google";
