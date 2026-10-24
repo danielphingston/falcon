@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from "react";
-import { BACKUP_VERSION, GEMINI_OAUTH_SCOPE, listGeminiModels, mergeRecords, parseBackup, tableNames, type Backup, type Settings } from "@fdd/core";
+import { BACKUP_VERSION, GEMINI_OAUTH_SCOPE, listGeminiModels, mergeRecords, parseBackup, tableNames, type Backup, type Settings } from "@falcon/core";
 import { chatAuth, clearChat, friendlyError } from "../lib/chat";
 import { Icon } from "../components/Icon";
 import { Segmented } from "../components/ui";
@@ -13,6 +13,9 @@ import { ImportAllocation } from "../components/ImportAllocation";
 import { connectGoogle, disconnectGoogle, hasScope, readAuth, warmGoogle } from "../lib/google";
 import { markSignedOut, scheduleSync, syncNow, useSyncStatus } from "../lib/sync";
 import { toast } from "../lib/toast";
+
+// Static about / privacy / terms pages in public/, outside the router.
+const PAGES = import.meta.env.BASE_URL;
 
 const DAYS = ["S", "M", "T", "W", "T", "F", "S"];
 
@@ -29,7 +32,7 @@ export function SettingsPage() {
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `fdd-tracker-backup-${backup.exportedAt.slice(0, 10)}.json`;
+    a.download = `falcon-backup-${backup.exportedAt.slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -203,7 +206,7 @@ export function SettingsPage() {
           <button
             className="btn btn-soft btn-sm text-rose-600"
             onClick={async () => {
-              if (!window.confirm("Erase all FDD Tracker data on this device? Export a backup first if you might need it.")) return;
+              if (!window.confirm("Erase all Falcon data on this device? Export a backup first if you might need it.")) return;
               await db.delete();
               location.reload();
             }}
@@ -212,7 +215,12 @@ export function SettingsPage() {
           </button>
         </Row>
       </Group>
-      <p className="pb-4 text-center text-xs muted">FDD Tracker · version {new Date(__BUILD_TIME__).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</p>
+      <p className="pb-4 text-center text-xs muted">
+        Falcon · version {new Date(__BUILD_TIME__).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+        <br />
+        <a className="underline" href={`${PAGES}about.html`}>About</a> · <a className="underline" href={`${PAGES}privacy.html`}>Privacy policy</a> ·{" "}
+        <a className="underline" href={`${PAGES}terms.html`}>Terms of use</a>
+      </p>
     </div>
   );
 }
@@ -256,7 +264,8 @@ function GoogleGroup({ s }: { s: Settings }) {
           <div className="space-y-2 px-4 py-3">
             <p className="text-[15px] font-medium">Sync across devices with Google</p>
             <p className="text-xs muted">
-              Your data is saved to a hidden app folder in <b>your own</b> Google Drive (you won't see it in Drive), and deadlines, reminders and focus blocks go to your Google Calendar. Nothing passes through any other server.
+              Your data is saved to a hidden app folder in <b>your own</b> Google Drive (you won't see it in Drive), and deadlines, reminders and focus blocks go to your Google Calendar. Nothing passes through any other server.{" "}
+              <a className="underline" href={`${PAGES}privacy.html`}>Privacy policy</a>
             </p>
           </div>
           {!builtIn && (

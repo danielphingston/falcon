@@ -11,7 +11,7 @@ import {
   todayISO,
   type DayEvent,
   type LocalSide,
-} from "@fdd/core";
+} from "@falcon/core";
 import { db, getSettings, saveSettings, store } from "../db";
 import { NeedsAuthError, getAccessToken, hasScope, readAuth } from "./google";
 

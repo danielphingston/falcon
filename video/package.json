@@ -1,5 +1,5 @@
 {
-  "name": "fdd-tracker-video",
+  "name": "falcon-video",
   "private": true,
   "type": "module",
   "description": "Tooling to record the feature-tour video. Not part of the app or its workspaces.",

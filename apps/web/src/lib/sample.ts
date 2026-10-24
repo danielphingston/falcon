@@ -7,7 +7,7 @@ import {
   logChase,
   todayISO,
   type Ctx,
-} from "@fdd/core";
+} from "@falcon/core";
 import { getSettings } from "../db";
 
 /** Fills the app with a realistic buy-side engagement so it can be explored. */

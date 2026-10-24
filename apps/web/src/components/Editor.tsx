@@ -14,7 +14,7 @@ import {
   type AnyEntity,
   type EntityMap,
   type TableName,
-} from "@fdd/core";
+} from "@falcon/core";
 import { act } from "../lib/act";
 import { useRecord, useTable } from "../lib/hooks";
 import { formDefs, RecordForm, toLocalInput, valuesToPatch, type FormValues } from "./forms";

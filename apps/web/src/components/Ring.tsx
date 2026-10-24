@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import type { Ring } from "@fdd/core";
+import type { Ring } from "@falcon/core";
 
 const ARCS = [
   { key: "due", color: "#f43f5e", track: "rgba(244,63,94,.15)", label: "Due items" },

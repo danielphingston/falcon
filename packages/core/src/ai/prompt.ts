@@ -13,7 +13,7 @@ export function assistantInstructions(s: Snapshot, settings: Settings, today: st
   const live = s.engagements.filter((e) => e.status !== "closed");
   const people = s.people.slice(0, 80);
   const name = settings.myName && settings.myName !== "Me" ? settings.myName : "the user";
-  return `You are the assistant inside FDD Tracker, a personal work tracker for ${name}, a Chartered Accountant working in Financial Due Diligence (FDD) on M&A deals.
+  return `You are the assistant inside Falcon, a personal work tracker for ${name}, a Chartered Accountant working in Financial Due Diligence (FDD) on M&A deals.
 
 Today is ${format(parseISO(today), "EEEE d MMMM yyyy")} (${today}); the local time is ${format(now, "HH:mm")}. Working days: ${settings.workingDays.map((d) => DAY_NAMES[d]).join(", ")}.
 

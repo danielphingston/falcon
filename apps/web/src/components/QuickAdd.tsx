@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
-import { create, createFollowUp, createInfoRequest, parseQuickAdd, relativeDay, type Ctx } from "@fdd/core";
+import { create, createFollowUp, createInfoRequest, parseQuickAdd, relativeDay, type Ctx } from "@falcon/core";
 import { act } from "../lib/act";
 import { useSettings, useTable, useToday } from "../lib/hooks";
 import { Icon } from "./Icon";

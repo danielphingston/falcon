@@ -1,8 +1,8 @@
-# FDD Tracker: User Guide
+# Falcon: User Guide
 
 ## What it is
 
-FDD Tracker is a personal work tracker for a financial due diligence team lead. It holds your engagements, information requests (IRLs), work papers, review points, follow-ups, calendar and time. It works offline and keeps your data on your own devices.
+Falcon is a personal work tracker for a financial due diligence team lead. It holds your engagements, information requests (IRLs), work papers, review points, follow-ups, calendar and time. It works offline and keeps your data on your own devices.
 
 Live link: https://danielphingston.github.io/falcon/
 
