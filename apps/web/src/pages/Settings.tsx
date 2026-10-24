@@ -14,6 +14,9 @@ import { connectGoogle, disconnectGoogle, hasScope, readAuth, warmGoogle } from 
 import { markSignedOut, scheduleSync, syncNow, useSyncStatus } from "../lib/sync";
 import { toast } from "../lib/toast";
 
+// Static about / privacy / terms pages in public/, outside the router.
+const PAGES = import.meta.env.BASE_URL;
+
 const DAYS = ["S", "M", "T", "W", "T", "F", "S"];
 
 export function SettingsPage() {
@@ -212,7 +215,12 @@ export function SettingsPage() {
           </button>
         </Row>
       </Group>
-      <p className="pb-4 text-center text-xs muted">FDD Tracker · version {new Date(__BUILD_TIME__).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</p>
+      <p className="pb-4 text-center text-xs muted">
+        FDD Tracker · version {new Date(__BUILD_TIME__).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+        <br />
+        <a className="underline" href={`${PAGES}about.html`}>About</a> · <a className="underline" href={`${PAGES}privacy.html`}>Privacy policy</a> ·{" "}
+        <a className="underline" href={`${PAGES}terms.html`}>Terms of use</a>
+      </p>
     </div>
   );
 }
@@ -256,7 +264,8 @@ function GoogleGroup({ s }: { s: Settings }) {
           <div className="space-y-2 px-4 py-3">
             <p className="text-[15px] font-medium">Sync across devices with Google</p>
             <p className="text-xs muted">
-              Your data is saved to a hidden app folder in <b>your own</b> Google Drive (you won't see it in Drive), and deadlines, reminders and focus blocks go to your Google Calendar. Nothing passes through any other server.
+              Your data is saved to a hidden app folder in <b>your own</b> Google Drive (you won't see it in Drive), and deadlines, reminders and focus blocks go to your Google Calendar. Nothing passes through any other server.{" "}
+              <a className="underline" href={`${PAGES}privacy.html`}>Privacy policy</a>
             </p>
           </div>
           {!builtIn && (

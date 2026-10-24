@@ -1,6 +1,7 @@
 {
   "name": "fdd-tracker",
   "private": true,
+  "license": "MIT",
   "workspaces": [
     "apps/*",
     "packages/*"
