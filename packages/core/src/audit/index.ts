@@ -6,3 +6,4 @@ export * from "./analytics";
 export * from "./generate";
 export * from "./programme";
 export { procedureLibrary } from "./library";
+export * from "./reviewAssist";

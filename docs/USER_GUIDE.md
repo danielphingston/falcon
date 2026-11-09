@@ -98,6 +98,22 @@ The file is read on your device only. Importing again later **updates** existing
 3. Open a work paper and add review points, one per line. Pasting a list works.
 4. Tick **Clear review point** when a point is resolved.
 
+**Review cues: "has this been done on the work paper?"**
+
+Every work paper you open shows **Review cues** for its area: the checks a reviewer should expect to find on it.
+
+- The area comes from the WP's **Programme area**. If that's empty, the app guesses it from the title (for example "Trade receivables" or "NWC") and says so. Use **Change area** if the guess is wrong.
+- If the engagement has a work programme (TB uploaded), the cues are its steps for that area. Otherwise they come from the procedure library for the engagement type, with key steps first.
+- Tap **Start guided review** to go one question at a time. Answer **Yes, done**, **No / issue**, **N.A.** or **Skip**. A "No" asks what's missing, lets you raise it as a review point, and shows what more to check and why. The dots at the top show your progress, and you can tap any dot to jump to that question. At the end you get a summary, plus shortcuts to revisit the flagged questions or answer the rest.
+- **List view** shows the same cues with ✓ / ⚑ / n.a. buttons.
+- Each answer is saved as a work-programme step linked to the WP, so it syncs and shows in the **Programme** tab.
+
+**Counter-questions on review points: "have you also checked…?"**
+
+- While you type a review point, the app suggests related checks from the procedure library.
+- When you add a point, it is challenged straight away. Related checks are attached at once. If the assistant is set up (Settings → AI assistant), Gemini also adds 2–4 specific questions, marked **AI**. These are based on the WP, its area, the TB numbers and trend flags, your other points and the steps you've already passed.
+- For each question you can choose **Add as review point**, **Add to programme** (it becomes a step such as "Check dispatch documents…") or **Dismiss**. Tap **Challenge with AI** (or **Challenge again**) on any open point to ask again.
+
 ## Follow-ups (Waiting on)
 
 **What it's for:** everything you are waiting for, grouped by person, longest-waiting first. It includes open IRL items.

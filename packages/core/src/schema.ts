@@ -118,6 +118,17 @@ export const reviewPointFields = z.object({
   assignedToId: z.string().optional(),
   status: z.enum(reviewPointStatuses).default("open"),
   clearedAt: isoDateTime.optional(),
+  /** "Have you also checked…?" counter-questions on this point (AI or offline). */
+  challenges: z
+    .array(
+      z.object({
+        question: z.string(),
+        why: z.string().default(""),
+        source: z.enum(["ai", "library"]).default("library"),
+        status: z.enum(["open", "added", "dismissed"]).default("open"),
+      }),
+    )
+    .optional(),
 });
 
 // ---------- Info requests (IRL) ----------
