@@ -14,4 +14,5 @@ export * from "./google";
 export * from "./ai";
 export * from "./teamImport";
 export * from "./calendarView";
+export * from "./audit";
 export { MemoryStore } from "./memoryStore";

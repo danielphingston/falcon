@@ -193,3 +193,19 @@ Use **New chat** to start again. Chat history stays on this device.
 - **Safari sign-in leaves the app.** Safari signs you in by redirecting the page to Google and back, not by a pop-up. This is expected.
 - **New version not showing.** Close the app completely and reopen it. The version is at the bottom of **Settings**.
 - **Gemini permission errors.** Switch to the **API key** option in Settings.
+
+## Work programme (from the trial balance)
+
+**What it's for:** turning a client's TB into a complete, tailored checklist of what to do on the engagement, and helping you review it.
+
+**How to**
+
+1. Open the engagement → **Programme** tab → **Upload trial balance**. Use Tally's Trial Balance export to Excel (detailed, with ledgers; add the previous year as a comparative if you can), or any Excel/CSV TB.
+2. Confirm the **year under audit**, what to **compare with**, the **engagement type** (Statutory audit, Financial due diligence, Internal audit) and the **industry** (D2C/e-commerce, manufacturing, IT/services/SaaS, trading).
+3. Check the **mapping**: every ledger is placed in an area (receivables, inventory, GST/TDS dues, revenue…) from its Tally group and name. Fix any that are wrong; the app remembers your corrections next time. The screen tells you if debits don't equal credits.
+4. Tap **Save & build programme**. You get:
+   - **Materiality** (1% of revenue by default; type your own figure to change it). Areas below performance materiality get only their key steps.
+   - **Trend checks** per area, e.g. "Revenue +10%, so receivables would be expected at +8% to +12%; actual +33%". Flagged checks list what to look at; **Add these checks to the programme** puts them in.
+   - **Procedures** for every area, by assertion, with the reason for each. Tick them off, assign them to a team member and link a work paper by tapping a step.
+5. **Reviewing:** give a work paper a **Programme area** (e.g. Trade receivables). When you open it, the **Review checklist** shows that area's steps. Mark each ✓, ⚑ or n.a. When you flag one, note what you found, and the app shows **what more to check, and why**. Add any of those to the programme, raise them as review points, or tap **Ask AI what else to check** for suggestions based on the balances, trends and your notes.
+6. **Copy** puts the whole programme on the clipboard for Excel. **New TB** re-imports (for example a revised TB); it adds what's missing and keeps your progress.

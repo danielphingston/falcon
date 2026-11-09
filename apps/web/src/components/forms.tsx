@@ -1,5 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import {
+  AREAS,
+  AREA_IDS,
   defaultWorkstreams,
   engagementStatuses,
   followUpTypes,
@@ -14,7 +16,7 @@ import {
 } from "@fdd/core";
 import { useTable } from "../lib/hooks";
 
-export type FieldType = "text" | "textarea" | "date" | "time" | "minutes" | "datetime" | "select" | "person" | "people" | "engagement" | "workstream" | "toggles" | "hours" | "task";
+export type FieldType = "text" | "textarea" | "date" | "time" | "minutes" | "datetime" | "select" | "person" | "people" | "engagement" | "workstream" | "workpaper" | "toggles" | "hours" | "task";
 
 export interface FieldDef {
   name: string;
@@ -75,6 +77,7 @@ export const formDefs: Record<TableName, FieldDef[]> = {
     { name: "title", label: "Title", type: "text", required: true, placeholder: "e.g. NWC analysis" },
     { name: "engagementId", label: "Engagement", type: "engagement", required: true },
     { name: "workstreamId", label: "Workstream", type: "workstream", half: true },
+    { name: "area", label: "Programme area", type: "select", options: [{ value: "", label: "None" }, ...AREA_IDS.filter((a) => a !== "unmapped").map((a) => ({ value: a, label: AREAS[a].label }))], half: true },
     { name: "status", label: "Status", type: "select", options: opts(wpStatuses, labels.wpStatus), half: true },
     { name: "preparerId", label: "Preparer", type: "person", roles: ["team"], half: true },
     { name: "reviewerId", label: "Reviewer", type: "person", roles: ["manager", "partner"], half: true },
@@ -130,6 +133,14 @@ export const formDefs: Record<TableName, FieldDef[]> = {
   ],
   days: [],
   achievements: [],
+  trialBalances: [],
+  programItems: [
+    { name: "text", label: "Procedure", type: "textarea", required: true },
+    { name: "status", label: "Status", type: "select", options: [{ value: "todo", label: "To do" }, { value: "in_progress", label: "In progress" }, { value: "done", label: "Done" }, { value: "na", label: "Not applicable" }], half: true },
+    { name: "assigneeId", label: "Assigned to", type: "person", roles: ["team"], half: true },
+    { name: "workpaperId", label: "Work paper", type: "workpaper" },
+    { name: "notes", label: "Notes / evidence", type: "textarea" },
+  ],
 };
 
 export type FormValues = Record<string, string | string[]>;
@@ -162,6 +173,7 @@ export function RecordForm({
   const engagements = useTable("engagements");
   const workstreams = useTable("workstreams");
   const tasks = useTable("tasks");
+  const workpapers = useTable("workpapers");
   const visible = fields.filter((f) => !(f.createOnly && mode === "edit"));
 
   const wsOptions = useMemo(
@@ -181,6 +193,21 @@ export function RecordForm({
         return <input {...common} type="time" step={300} value={v} onChange={(e) => set(f.name, e.target.value)} />;
       case "minutes":
         return <input {...common} type="number" min={5} max={1440} step={5} inputMode="numeric" value={v} placeholder={f.placeholder} onChange={(e) => set(f.name, e.target.value)} />;
+      case "workpaper": {
+        const engId = (values.engagementId as string) || "";
+        return (
+          <select {...common} value={v} onChange={(e) => set(f.name, e.target.value)}>
+            <option value="">None</option>
+            {(workpapers ?? [])
+              .filter((w) => !engId || w.engagementId === engId)
+              .map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.ref} {w.title}
+                </option>
+              ))}
+          </select>
+        );
+      }
       case "people": {
         const selected = (values[f.name] as string[]) ?? [];
         const list = [...(people ?? [])].sort(

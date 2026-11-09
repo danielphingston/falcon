@@ -28,6 +28,10 @@ packages/core   Data model (zod), actions + undo, Today view, quick-add parser,
 
 The screens and the future AI chat/connector call the same actions in `packages/core`, so they behave the same way: everything they change goes into the change log and can be undone.
 
+## Work programme from the TB
+
+Engagement → **Programme**: upload a Tally/Excel trial balance and the app maps every ledger to an area, suggests materiality, runs trend checks (e.g. receivables growth vs revenue growth, inventory vs COGS, payables vs purchases, margins, implied interest rate), and builds a checklist of procedures from a library of ~420 steps for statutory audit, FDD and internal audit, tailored to D2C, manufacturing, services and trading. When reviewing a work paper, flagged steps show what more to check and why. See docs/USER_GUIDE.md.
+
 ## Quick-add syntax
 
 | Type | Example |

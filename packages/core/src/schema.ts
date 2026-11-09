@@ -104,6 +104,8 @@ export const workpaperFields = z.object({
   notes: z.string().optional(),
   /** Set automatically when the WP reaches "final". */
   finalAt: isoDateTime.optional(),
+  /** Work-programme area this WP covers (e.g. "receivables"); drives the review checklist. */
+  area: z.string().optional(),
 });
 
 // ---------- Review points ----------
@@ -160,6 +162,62 @@ export const alertFields = z.object({
   fired: z.boolean().default(false),
 });
 
+// ---------- Work programme ----------
+/** One trial balance per engagement: mapped ledgers plus programme settings. */
+export const trialBalanceFields = z.object({
+  engagementId: z.string(),
+  fileName: z.string().default(""),
+  importedAt: isoDateTime,
+  periods: z.array(z.object({ label: z.string(), isOpening: z.boolean().default(false) })).min(1),
+  /** Index into periods for the year under audit, and the comparative. */
+  currentIdx: z.number().int().min(0).default(0),
+  priorIdx: z.number().int().min(0).optional(),
+  lines: z
+    .array(
+      z.object({
+        id: z.string(),
+        ledger: z.string(),
+        groups: z.array(z.string()).default([]),
+        area: z.string(),
+        /** Net per period, debit positive. */
+        balances: z.array(z.number()),
+        mappedBy: z.enum(["auto", "user"]).default("auto"),
+        excluded: z.boolean().optional(),
+      }),
+    )
+    .default([]),
+  kind: z.enum(["audit", "fdd", "ia"]).default("audit"),
+  industry: z.enum(["generic", "d2c", "manufacturing", "services", "trading"]).default("generic"),
+  /** Overall and performance materiality (absolute amounts). */
+  materiality: z.number().min(0).optional(),
+  performance: z.number().min(0).optional(),
+});
+
+export const programItemStatuses = ["todo", "in_progress", "done", "na"] as const;
+export const reviewOutcomes = ["none", "ok", "flagged", "na"] as const;
+/** One line of an engagement's work programme. */
+export const programItemFields = z.object({
+  engagementId: z.string(),
+  area: z.string(),
+  /** Library procedure it came from, if any. */
+  procedureId: z.string().optional(),
+  text: z.string().trim().min(1),
+  why: z.string().optional(),
+  assertions: z.array(z.string()).default([]),
+  source: z.enum(["library", "followup", "insight", "ai", "manual"]).default("manual"),
+  /** For follow-ups: the item that was flagged. */
+  parentId: z.string().optional(),
+  core: z.boolean().default(false),
+  status: z.enum(programItemStatuses).default("todo"),
+  assigneeId: z.string().optional(),
+  workpaperId: z.string().optional(),
+  notes: z.string().optional(),
+  /** Reviewer's outcome for this step. */
+  review: z.enum(reviewOutcomes).default("none"),
+  reviewNote: z.string().optional(),
+  order: z.number().default(0),
+});
+
 // ---------- Time ----------
 export const timeEntryFields = z.object({
   date: isoDate,
@@ -199,6 +257,8 @@ export const fieldSchemas = {
   timeEntries: timeEntryFields,
   days: dayFields,
   achievements: achievementFields,
+  trialBalances: trialBalanceFields,
+  programItems: programItemFields,
 } as const;
 
 export type TableName = keyof typeof fieldSchemas;
@@ -217,6 +277,8 @@ export const entitySchemas = {
   timeEntries: timeEntryFields.extend(base),
   days: dayFields.extend(base),
   achievements: achievementFields.extend(base),
+  trialBalances: trialBalanceFields.extend(base),
+  programItems: programItemFields.extend(base),
 } as const;
 
 export type EntityMap = { [K in TableName]: z.output<(typeof entitySchemas)[K]> };
@@ -236,6 +298,9 @@ export type Alert = EntityMap["alerts"];
 export type TimeEntry = EntityMap["timeEntries"];
 export type DayRecord = EntityMap["days"];
 export type Achievement = EntityMap["achievements"];
+export type TrialBalance = EntityMap["trialBalances"];
+export type TbLine = TrialBalance["lines"][number];
+export type ProgramItem = EntityMap["programItems"];
 
 /** Tables holding the user's work (excludes system-written gamification state). */
 export const workTables = [
@@ -248,6 +313,7 @@ export const workTables = [
   "infoRequests",
   "followUps",
   "timeEntries",
+  "programItems",
 ] as const satisfies readonly TableName[];
 
 /** One entry per record change; powers Undo (and later, points). */

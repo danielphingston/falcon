@@ -21,6 +21,8 @@ import { todayISO } from "./dates";
 import { computeToday, titleOf } from "./today";
 import { BADGES, chaseStreak, levelFor, pointEvents, ringFor, ringStreak } from "./game";
 import { matchName, nameKey } from "./teamImport";
+import { AREA_IDS, areaLabel, programmeView, type AreaId } from "./audit";
+import { programItemStatuses, reviewOutcomes } from "./schema";
 import { periodReport, shiftWeek, timesheet, timesheetText, weekDays, weekStart } from "./time";
 import { loadSnapshot, type Store } from "./store";
 import {
@@ -548,6 +550,78 @@ export const tools = [
         noOverdueChasesStreak: chaseStreak(snap.days, today, settings),
         badges: snap.achievements.map((a) => ({ ...BADGES.find((b) => b.id === a.badge), earnedAt: a.earnedAt, earned: undefined })),
       };
+    },
+  }),
+
+  tool({
+    name: "get_work_programme",
+    kind: "read",
+    description:
+      "An engagement's TB-driven work programme: materiality, area balances (current and prior), trend flags, and procedures with status, reviewer outcome and notes. Optionally one area.",
+    input: z.object({
+      engagement: z.string(),
+      area: z.enum(AREA_IDS as [AreaId, ...AreaId[]]).optional(),
+    }),
+    async run(ctx, { engagement, area }) {
+      const e = await resolveEngagement(ctx.store, engagement);
+      const tb = (await ctx.store.list("trialBalances")).find((t) => !t.deleted && t.engagementId === e.id);
+      const items = (await ctx.store.list("programItems")).filter((i) => !i.deleted && i.engagementId === e.id && (!area || i.area === area));
+      if (!tb) return { engagement: e.name, programme: "No trial balance imported yet: ask the user to upload it in the engagement's Programme tab.", items: items.length };
+      const view = programmeView(tb);
+      return {
+        engagement: e.name,
+        kind: tb.kind,
+        industry: tb.industry,
+        period: tb.periods[tb.currentIdx]?.label,
+        comparative: tb.priorIdx !== undefined ? tb.periods[tb.priorIdx]?.label : undefined,
+        materiality: view.materiality,
+        areas: view.plans.filter((p) => !area || p.area === area).map((p) => ({ area: p.area, label: areaLabel(p.area), current: Math.round(p.current), prior: p.prior === undefined ? undefined : Math.round(p.prior), scope: p.scope })),
+        trendFlags: view.insights.filter((i) => i.status === "flag" && (!area || i.area === area)).map((i) => ({ area: i.area, title: i.title, detail: i.detail })),
+        procedures: items
+          .sort((a, b) => a.order - b.order)
+          .map((i) => ({ id: i.id, area: i.area, text: i.text, status: i.status, review: i.review, reviewNote: i.reviewNote, notes: i.notes, source: i.source })),
+      };
+    },
+  }),
+
+  tool({
+    name: "add_program_items",
+    kind: "write",
+    description: "Add procedures (with why) to an engagement's work programme for an area, e.g. extra checks after the reviewer flagged something. Optionally under a flagged step (parentId).",
+    input: z.object({
+      engagement: z.string(),
+      area: z.enum(AREA_IDS as [AreaId, ...AreaId[]]),
+      items: z.array(z.object({ text: z.string(), why: z.string().optional() })).min(1),
+      parentId: z.string().optional().describe("Id of the programme step these follow up on"),
+    }),
+    async run(ctx, { engagement, area, items, parentId }) {
+      const e = await resolveEngagement(ctx.store, engagement);
+      const all = (await ctx.store.list("programItems")).filter((i) => !i.deleted && i.engagementId === e.id);
+      const parent = parentId ? all.find((i) => i.id === parentId) : undefined;
+      const base = parent ? parent.order : Math.max(0, ...all.filter((i) => i.area === area).map((i) => i.order)) + 1;
+      const ids = [];
+      for (const [k, it] of items.entries())
+        ids.push((await create(ctx, "programItems", { engagementId: e.id, area, text: it.text, why: it.why, source: "ai", parentId: parent?.id, order: base + 0.01 * (k + 1) })).record.id);
+      return { added: ids.length, ids };
+    },
+  }),
+
+  tool({
+    name: "update_program_item",
+    kind: "write",
+    description: "Update a work-programme step: preparer status, reviewer outcome (ok / flagged / na) with a note, notes, or assignee.",
+    input: z.object({
+      id: z.string(),
+      status: z.enum(programItemStatuses).optional(),
+      review: z.enum(reviewOutcomes).optional(),
+      reviewNote: z.string().optional(),
+      notes: z.string().optional(),
+      assignee: z.string().optional().describe("Team member name, or 'me'"),
+    }),
+    async run(ctx, { id, assignee, ...rest }) {
+      const assigneeId = assignee === undefined ? undefined : ((await resolvePerson(ctx, assignee, "team"))?.id ?? null);
+      const r = await update(ctx, "programItems", id, { ...rest, ...(assignee === undefined ? {} : { assigneeId }) });
+      return { updated: brief("programItems", r.record) };
     },
   }),
 

@@ -20,6 +20,7 @@ import { useRecord, useTable } from "../lib/hooks";
 import { formDefs, RecordForm, toLocalInput, valuesToPatch, type FormValues } from "./forms";
 import { Icon } from "./Icon";
 import { Checkbox, Pill, Sheet, statusTone } from "./ui";
+import { ReviewChecklist } from "./ReviewChecklist";
 
 // ---------- Editor stack (any component can open one) ----------
 
@@ -79,6 +80,8 @@ const nouns: Record<TableName, string> = {
   timeEntries: "time entry",
   days: "day",
   achievements: "badge",
+  trialBalances: "trial balance",
+  programItems: "programme step",
 };
 
 function recordToValues(table: TableName, r: Record<string, unknown> | null | undefined): FormValues {
@@ -91,6 +94,8 @@ function recordToValues(table: TableName, r: Record<string, unknown> | null | un
     else if (f.type === "hours") out[f.name] = typeof v === "number" ? String(Math.round((v / 60) * 100) / 100) : "";
     else out[f.name] = v === undefined || v === null ? "" : String(v);
   }
+  // Context for pickers (e.g. a programme step's work-paper list); not saved.
+  if (typeof r?.engagementId === "string" && !("engagementId" in out)) out.engagementId = r.engagementId;
   // Sensible defaults for selects so the form shows what will be saved.
   for (const f of formDefs[table])
     if (f.type === "select" && !out[f.name] && f.options?.length)
@@ -177,6 +182,7 @@ function Extras({ table, record }: { table: TableName; record: AnyEntity }) {
   const remindable = table === "tasks" || table === "infoRequests" || table === "followUps" || table === "workpapers";
   return (
     <div className="mt-5 space-y-5">
+      {table === "workpapers" && <ReviewChecklist wp={record as EntityMap["workpapers"]} />}
       {table === "workpapers" && <ReviewPointsPanel wp={record as EntityMap["workpapers"]} />}
       {(table === "infoRequests" || table === "followUps") && (
         <ChasePanel table={table} record={record as EntityMap["infoRequests"] | EntityMap["followUps"]} />

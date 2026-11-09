@@ -36,6 +36,10 @@ class FddDB extends Dexie {
       days: "id, date",
       achievements: "id, badge",
     });
+    this.version(3).stores({
+      trialBalances: "id, engagementId",
+      programItems: "id, engagementId, area, workpaperId",
+    });
   }
 }
 
