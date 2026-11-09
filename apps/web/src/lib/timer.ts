@@ -1,6 +1,6 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
-import { create, todayISO } from "@fdd/core";
+import { create, todayISO } from "@falcon/core";
 import { db } from "../db";
 import { act } from "./act";
 

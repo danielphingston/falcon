@@ -104,7 +104,7 @@ export function ChatPanel({ compact }: { compact?: boolean }) {
               <Icon name="sparkles" className="text-brand-600" /> Assistant
             </h1>
             <p className="text-xs muted">
-              Gemini · {settings.geminiModel} · {settings.geminiAuth === "google" ? "Google sign-in" : "API key"}
+              Gemini · {settings.geminiModel} · Google sign-in
             </p>
           </div>
           {messages.length > 0 && (

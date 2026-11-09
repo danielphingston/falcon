@@ -20,7 +20,7 @@ import {
   type ParsedTb,
   type SheetData,
   type TrialBalance,
-} from "@fdd/core";
+} from "@falcon/core";
 import { store } from "../db";
 import { act } from "../lib/act";
 import { useTable } from "../lib/hooks";

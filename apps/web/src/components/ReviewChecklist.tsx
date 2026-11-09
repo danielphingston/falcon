@@ -17,7 +17,7 @@ import {
   type ProcedureFollowUp,
   type ReviewCue,
   type WorkPaper,
-} from "@fdd/core";
+} from "@falcon/core";
 import { act } from "../lib/act";
 import { sendMessage } from "../lib/chat";
 import { useSnapshot } from "../lib/hooks";

@@ -15,7 +15,7 @@ import {
   relativeDay,
   update,
   type Snapshot,
-} from "@fdd/core";
+} from "@falcon/core";
 import { openEditor } from "../components/Editor";
 import { Icon } from "../components/Icon";
 import { FollowUpRow, IrlRow, ReviewPointRow, TaskRow, WorkpaperRow, useLookups } from "../components/rows";

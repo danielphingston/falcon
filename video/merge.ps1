@@ -1,5 +1,5 @@
 param([double]$Gain = 0)
-# Builds FDD-Tracker-feature-tour.mp4, the SRT subtitles and review frames.
+# Builds Falcon-feature-tour.mp4, the SRT subtitles and review frames.
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File D:\ToDo\video\merge.ps1 [-Gain <dB>]
 $ErrorActionPreference = 'Stop'
 $inv = [Globalization.CultureInfo]::InvariantCulture
@@ -10,9 +10,9 @@ $root   = 'D:\ToDo\video'
 $out    = Join-Path $root 'out'
 $frames = Join-Path $out 'frames'
 $raw    = Join-Path $out 'raw.webm'
-$mp4    = Join-Path $out 'FDD-Tracker-feature-tour.mp4'
-$srt    = Join-Path $out 'FDD-Tracker-feature-tour.srt'
-$filterFile = Join-Path $out 'FDD-Tracker-filter.txt'
+$mp4    = Join-Path $out 'Falcon-feature-tour.mp4'
+$srt    = Join-Path $out 'Falcon-feature-tour.srt'
+$filterFile = Join-Path $out 'Falcon-filter.txt'
 
 # Tool paths: line 1 = ffmpeg, line 2 = ffprobe
 $tools   = Get-Content (Join-Path $out 'ffmpeg-path.txt') -Encoding UTF8

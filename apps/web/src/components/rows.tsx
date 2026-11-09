@@ -13,7 +13,7 @@ import {
   type ReviewPoint,
   type Task,
   type WorkPaper,
-} from "@fdd/core";
+} from "@falcon/core";
 import { act } from "../lib/act";
 import { byId, useTable, useToday } from "../lib/hooks";
 import { openEditor } from "./Editor";

@@ -11,7 +11,7 @@ import {
   type Settings,
   type Snapshot,
   type TableName,
-} from "@fdd/core";
+} from "@falcon/core";
 import { db } from "../db";
 import { celebrate } from "./confetti";
 import { toast } from "./toast";

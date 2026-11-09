@@ -1,12 +1,12 @@
 {
-  "title": "FDD Tracker: feature tour",
+  "title": "Falcon: feature tour",
   "resolution": [1280, 720],
   "notes": "Each scene: 'caption' is the on-screen guide text (short), 'narration' is spoken. 'show' tells the recorder what to do on screen while the narration plays. Use only the app's sample data and the fictional sample sheet in video/assets.",
   "scenes": [
     {
       "id": "01-intro",
-      "caption": "FDD Tracker: your day, in one place",
-      "narration": "This is FDD Tracker, a personal work tracker built for a chartered accountant leading a financial due diligence team. It runs as an app on your laptop and iPhone, works offline, and keeps your data on your own devices.",
+      "caption": "Falcon: your day, in one place",
+      "narration": "This is Falcon, a personal work tracker built for a chartered accountant leading a financial due diligence team. It runs as an app on your laptop and iPhone, works offline, and keeps your data on your own devices.",
       "show": "Open the app at / with a fresh profile (empty Welcome screen). Hold."
     },
     {
@@ -114,7 +114,7 @@
     {
       "id": "19-outro",
       "caption": "danielphingston.github.io/falcon",
-      "narration": "That's FDD Tracker. Everything stays yours, works offline, and syncs when you're ready.",
+      "narration": "That's Falcon. Everything stays yours, works offline, and syncs when you're ready.",
       "show": "Back to desktop size on Today. Hold, then fade."
     }
   ]

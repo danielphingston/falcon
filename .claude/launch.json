@@ -4,13 +4,13 @@
     {
       "name": "web-preview",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "preview", "-w", "@fdd/web", "--", "--port", "4173", "--strictPort"],
+      "runtimeArgs": ["run", "preview", "-w", "@falcon/web", "--", "--port", "4173", "--strictPort"],
       "port": 4173
     },
     {
       "name": "web-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "-w", "@fdd/web", "--", "--port", "5173", "--strictPort"],
+      "runtimeArgs": ["run", "dev", "-w", "@falcon/web", "--", "--port", "5173", "--strictPort"],
       "port": 5173
     }
   ]

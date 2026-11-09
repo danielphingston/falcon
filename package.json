@@ -1,15 +1,16 @@
 {
-  "name": "fdd-tracker",
+  "name": "falcon",
   "private": true,
+  "license": "MIT",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev -w @fdd/web",
-    "build": "npm run build -w @fdd/web",
-    "preview": "npm run preview -w @fdd/web",
-    "test": "npm test -w @fdd/core",
-    "typecheck": "npm run typecheck -w @fdd/core && npm run typecheck -w @fdd/web"
+    "dev": "npm run dev -w @falcon/web",
+    "build": "npm run build -w @falcon/web",
+    "preview": "npm run preview -w @falcon/web",
+    "test": "npm test -w @falcon/core",
+    "typecheck": "npm run typecheck -w @falcon/core && npm run typecheck -w @falcon/web"
   }
 }

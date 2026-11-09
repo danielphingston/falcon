@@ -14,6 +14,7 @@ export interface Backup {
 }
 
 const backupSchema = z.object({
+  // The app's old name; kept so existing backups and synced files still load.
   app: z.literal("fdd-tracker"),
   version: z.number().int(),
   exportedAt: z.string(),
@@ -31,7 +32,7 @@ export function parseBackup(json: unknown): Backup {
   const parsed = backupSchema.safeParse(json);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
-    throw new Error(`Not a valid FDD Tracker backup (${issue?.path.join(".") || "root"}: ${issue?.message})`);
+    throw new Error(`Not a valid Falcon backup (${issue?.path.join(".") || "root"}: ${issue?.message})`);
   }
   if (parsed.data.version > BACKUP_VERSION)
     throw new Error("This backup is from a newer version of the app. Update the app first.");

@@ -5,12 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="FDD Tracker" />
+    <meta name="apple-mobile-web-app-title" content="Falcon" />
     <meta name="description" content="Engagements, work papers, IRLs and follow-ups for financial due diligence." />
-    <title>FDD Tracker</title>
+    <title>Falcon</title>
   </head>
   <body>
     <div id="root"></div>
+    <!-- For crawlers without JavaScript (Google's OAuth verification checks
+         the app's pages link to its privacy policy). -->
+    <noscript>
+      <h1>Falcon</h1>
+      <p>Engagements, work papers, IRLs and follow-ups for financial due diligence. JavaScript is needed to run it.</p>
+      <p><a href="%BASE_URL%about.html">About</a> · <a href="%BASE_URL%privacy.html">Privacy policy</a> · <a href="%BASE_URL%terms.html">Terms of use</a></p>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

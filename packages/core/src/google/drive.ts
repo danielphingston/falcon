@@ -16,6 +16,7 @@ export interface RemoteFile {
  * A JSON file in the user's hidden Drive appDataFolder. Only this app's OAuth
  * client can see it, and it never shows up in the user's Drive.
  */
+// The file keeps the app's old name so existing devices and backups still sync.
 export function driveAppDataFile(getToken: TokenGetter, name = "fdd-tracker.json"): RemoteFile {
   let fileId: string | undefined;
 
@@ -51,7 +52,7 @@ export function driveAppDataFile(getToken: TokenGetter, name = "fdd-tracker.json
         });
         return { version: ((await res.json()) as { version: string }).version };
       }
-      const boundary = `fdd${Math.random().toString(36).slice(2)}`;
+      const boundary = `falcon${Math.random().toString(36).slice(2)}`;
       const meta = JSON.stringify({ name, parents: ["appDataFolder"], mimeType: "application/json" });
       const multipart =
         `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n` +

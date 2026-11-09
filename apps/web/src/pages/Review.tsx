@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { labels, liveEngagementIds, wpStatuses, type WorkPaper } from "@fdd/core";
+import { labels, liveEngagementIds, wpStatuses, type WorkPaper } from "@falcon/core";
 import { openEditor } from "../components/Editor";
 import { Icon } from "../components/Icon";
 import { WorkpaperRow, useLookups } from "../components/rows";

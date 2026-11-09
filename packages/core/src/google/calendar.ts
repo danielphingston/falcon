@@ -22,7 +22,7 @@ export interface ExistingEvent extends AppEvent {
   id: string;
 }
 
-const DESCRIPTION = "Added by FDD Tracker. Changes made here are overwritten by the app.";
+const DESCRIPTION = "Added by Falcon. Changes made here are overwritten by the app.";
 const KEY_DATES = [
   ["kickoff", "Kick-off"],
   ["dataRoom", "Data room opens"],
@@ -153,6 +153,8 @@ export interface DayEvent {
   ours: boolean;
 }
 
+// Events are tagged with fddApp / fddKey / fddFocus (the app's old name). Keep
+// the names: renaming them would orphan events already on people's calendars.
 const toBody = (e: AppEvent, extra: Record<string, string>) => ({
   summary: e.summary,
   description: DESCRIPTION,

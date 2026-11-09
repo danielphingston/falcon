@@ -8,15 +8,16 @@ import {
   type Settings,
   type Store,
   type TableName,
-} from "@fdd/core";
+} from "@falcon/core";
 
 type Tables = { [K in TableName]: Table<EntityMap[K], string> };
 
-class FddDB extends Dexie {
+class FalconDB extends Dexie {
   changes!: Table<Change, string>;
   meta!: Table<{ key: string; value: unknown }, string>;
 
   constructor() {
+    // The app's old name. Renaming the database would strand existing data.
     super("fdd-tracker");
     this.version(1).stores({
       people: "id, role",
@@ -36,14 +37,18 @@ class FddDB extends Dexie {
       days: "id, date",
       achievements: "id, badge",
     });
-    this.version(3).stores({
+    // The assistant now only signs in with Google; forget any Gemini API key saved earlier.
+    this.version(3)
+      .stores({})
+      .upgrade((tx) => tx.table("meta").delete("geminiKey"));
+    this.version(4).stores({
       trialBalances: "id, engagementId",
       programItems: "id, engagementId, area, workpaperId",
     });
   }
 }
 
-export const db = new FddDB() as FddDB & Tables;
+export const db = new FalconDB() as FalconDB & Tables;
 const table = <T extends TableName>(t: T) => db.table(t) as unknown as Table<EntityMap[T], string>;
 
 export const store: Store = {

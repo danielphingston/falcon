@@ -1,6 +1,6 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
-import { defaultSettings, loadSnapshot, todayISO, type EntityMap, type Settings, type Snapshot, type TableName } from "@fdd/core";
+import { defaultSettings, loadSnapshot, todayISO, type EntityMap, type Settings, type Snapshot, type TableName } from "@falcon/core";
 import { db, getSettings, store } from "../db";
 
 /** Live, non-deleted records of a table. `undefined` while loading. */

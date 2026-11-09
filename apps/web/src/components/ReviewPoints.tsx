@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
-import { create, labels, update, type ReviewPoint, type WorkPaper } from "@fdd/core";
+import { create, labels, update, type ReviewPoint, type WorkPaper } from "@falcon/core";
 import { act } from "../lib/act";
 import { useSnapshot } from "../lib/hooks";
 import { challengeWithAi, offlineChallenges, wpContext } from "../lib/review";

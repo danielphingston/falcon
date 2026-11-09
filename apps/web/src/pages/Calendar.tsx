@@ -3,7 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
-import { calendarClient, calendarItems, googleItems, layoutDay, toISODate, weekDays, weekStart, type CalItem, type CalKind } from "@fdd/core";
+import { calendarClient, calendarItems, googleItems, layoutDay, toISODate, weekDays, weekStart, type CalItem, type CalKind } from "@falcon/core";
 import { openEditor } from "../components/Editor";
 import { Icon } from "../components/Icon";
 import { Segmented } from "../components/ui";

@@ -1,6 +1,6 @@
 import { format, parseISO } from "date-fns";
 import { motion } from "motion/react";
-import { BADGES, LEVELS, POINTS, dailyPoints } from "@fdd/core";
+import { BADGES, LEVELS, POINTS, dailyPoints } from "@falcon/core";
 import { DailyRing, RingLegend } from "../components/Ring";
 import { EmptyState, Section } from "../components/ui";
 import { gameView } from "../lib/game";

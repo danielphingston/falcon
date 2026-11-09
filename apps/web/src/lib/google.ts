@@ -3,7 +3,7 @@
  * the browser: access tokens last ~1 hour, there are no refresh tokens, so when
  * one expires the user taps "Reconnect" (a popup needs a user gesture).
  */
-import { GEMINI_OAUTH_SCOPE, GOOGLE_SCOPES } from "@fdd/core";
+import { GEMINI_OAUTH_SCOPE, GOOGLE_SCOPES } from "@falcon/core";
 import { db, getSettings } from "../db";
 
 interface TokenResponse {
@@ -92,7 +92,7 @@ interface Prepared {
 let prepared: Prepared | null = null;
 let warming: Promise<void> | null = null;
 
-/** Loads what sign-in needs. Call on startup and whenever the client ID or AI sign-in setting changes. */
+/** Loads what sign-in needs. Call on startup and whenever the client ID changes. */
 export function warmGoogle(): Promise<void> {
   warming = (async () => {
     const clientId = await googleClientId();
@@ -100,10 +100,8 @@ export function warmGoogle(): Promise<void> {
       prepared = null;
       return;
     }
-    const settings = await getSettings();
     const previous = await readAuth();
-    // Gemini access is only requested when the assistant is set to use the Google sign-in.
-    const scopes = settings.geminiAuth === "google" ? [...GOOGLE_SCOPES, GEMINI_OAUTH_SCOPE] : [...GOOGLE_SCOPES];
+    const scopes = [...GOOGLE_SCOPES, GEMINI_OAUTH_SCOPE];
     prepared = { gis: null, clientId, scopes, email: previous?.email };
     try {
       prepared.gis = await loadGis();
@@ -129,7 +127,7 @@ export function prefersRedirectSignIn(): boolean {
 }
 
 const redirectUri = () => `${location.origin}${import.meta.env.BASE_URL}`;
-const REDIRECT_STATE = "fdd-oauth-state";
+const REDIRECT_STATE = "falcon-oauth-state";
 
 function startRedirectSignIn(p: Prepared) {
   const state = crypto.randomUUID();

@@ -2,7 +2,7 @@ import { format, parseISO } from "date-fns";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { calendarClient, formatHours, formatMinutes, shiftWeek, timesheet, timesheetText, weekStart } from "@fdd/core";
+import { calendarClient, formatHours, formatMinutes, shiftWeek, timesheet, timesheetText, weekStart } from "@falcon/core";
 import { openEditor } from "../components/Editor";
 import { toLocalInput } from "../components/forms";
 import { Icon } from "../components/Icon";

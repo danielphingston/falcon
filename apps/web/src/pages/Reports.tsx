@@ -1,7 +1,7 @@
 import { format, parseISO } from "date-fns";
 import { motion } from "motion/react";
 import { useState } from "react";
-import { formatMinutes, periodReport, reportText, shiftWeek, weekDays, weekStart } from "@fdd/core";
+import { formatMinutes, periodReport, reportText, shiftWeek, weekDays, weekStart } from "@falcon/core";
 import { Icon } from "../components/Icon";
 import { EmptyState, Section, Segmented } from "../components/ui";
 import { useSnapshot, useToday } from "../lib/hooks";

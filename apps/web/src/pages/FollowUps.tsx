@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { liveEngagementIds, type FollowUp, type InfoRequest } from "@fdd/core";
+import { liveEngagementIds, type FollowUp, type InfoRequest } from "@falcon/core";
 import { openEditor } from "../components/Editor";
 import { Icon } from "../components/Icon";
 import { FollowUpRow, IrlRow, personLabel, useLookups } from "../components/rows";

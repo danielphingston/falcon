@@ -1,4 +1,4 @@
-import { engagementsFor, labels, personRoles } from "@fdd/core";
+import { engagementsFor, labels, personRoles } from "@falcon/core";
 import { openEditor } from "../components/Editor";
 import { Icon } from "../components/Icon";
 import { Avatar } from "../components/TeamAvatars";

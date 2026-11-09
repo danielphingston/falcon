@@ -13,7 +13,7 @@ import {
   taskStatuses,
   wpStatuses,
   type TableName,
-} from "@fdd/core";
+} from "@falcon/core";
 import { useTable } from "../lib/hooks";
 
 export type FieldType = "text" | "textarea" | "date" | "time" | "minutes" | "datetime" | "select" | "person" | "people" | "engagement" | "workstream" | "workpaper" | "toggles" | "hours" | "task";

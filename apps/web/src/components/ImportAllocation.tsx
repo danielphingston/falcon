@@ -1,6 +1,6 @@
 import { motion } from "motion/react";
 import { useMemo, useRef, useState } from "react";
-import { applyTeamImport, labels, parseTeamAllocation, planTeamImport, type Allocation } from "@fdd/core";
+import { applyTeamImport, labels, parseTeamAllocation, planTeamImport, type Allocation } from "@falcon/core";
 import { saveSettings } from "../db";
 import { act } from "../lib/act";
 import { useSettings, useSnapshot } from "../lib/hooks";

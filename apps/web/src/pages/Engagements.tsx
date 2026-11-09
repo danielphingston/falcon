@@ -1,6 +1,6 @@
 import { motion } from "motion/react";
 import { useState } from "react";
-import { engagementPeople, labels, relativeDay, type Engagement } from "@fdd/core";
+import { engagementPeople, labels, relativeDay, type Engagement } from "@falcon/core";
 import { openEditor } from "../components/Editor";
 import { Icon } from "../components/Icon";
 import { ImportAllocation } from "../components/ImportAllocation";

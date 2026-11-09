@@ -3,7 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { motion, type Variants } from "motion/react";
 import { SyncBadge } from "../components/SyncBadge";
 import { readCalendarToday } from "../lib/sync";
-import { BADGES, computeToday, formatMinutes, isoWeekKey, logChase, shiftWeek, weekStart, weeklyRecap, type DueItem } from "@fdd/core";
+import { BADGES, computeToday, formatMinutes, isoWeekKey, logChase, shiftWeek, weekStart, weeklyRecap, type DueItem } from "@falcon/core";
 import { DailyRing, RingLegend } from "../components/Ring";
 import { TLink } from "../components/TLink";
 import { saveSettings } from "../db";
@@ -110,7 +110,7 @@ export function TodayPage() {
         <motion.div variants={rise}>
           <EmptyState
             icon="briefcase"
-            title="Welcome to FDD Tracker"
+            title="Welcome to Falcon"
             hint="Start by adding an engagement. Or open Settings and load sample data to look around first."
             action={
               <button className="btn btn-primary" onClick={() => openEditor({ table: "engagements" })}>
@@ -235,7 +235,7 @@ function CalendarToday({ rise }: { rise: Variants }) {
                 <span className="w-24 shrink-0 text-xs font-medium tabular-nums muted">{e.allDay ? "All day" : `${time(e.start)}–${time(e.end)}`}</span>
                 {live && <span className="size-2 shrink-0 animate-pulse rounded-full bg-emerald-500" />}
                 <span className="min-w-0 flex-1 truncate text-[15px]">{e.summary}</span>
-                {e.ours && <span className="text-[10px] font-semibold uppercase text-brand-600">FDD</span>}
+                {e.ours && <span className="text-[10px] font-semibold uppercase text-brand-600">Falcon</span>}
               </a>
             );
           })}

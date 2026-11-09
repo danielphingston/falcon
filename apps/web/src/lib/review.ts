@@ -20,7 +20,7 @@ import {
   type ReviewPoint,
   type Snapshot,
   type WorkPaper,
-} from "@fdd/core";
+} from "@falcon/core";
 import { getSettings, store } from "../db";
 import { chatAuth, friendlyError } from "./chat";
 import { scheduleSync } from "./sync";

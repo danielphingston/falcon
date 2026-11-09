@@ -1,5 +1,5 @@
 {
-  "name": "@fdd/web",
+  "name": "@falcon/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@fdd/core": "*",
+    "@falcon/core": "*",
     "canvas-confetti": "^1.9.4",
     "dexie": "^4.4.6",
     "dexie-react-hooks": "^4.4.0",

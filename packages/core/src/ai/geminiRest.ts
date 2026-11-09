@@ -1,14 +1,14 @@
 /**
- * Minimal Gemini REST client (no SDK). Works with either credential:
- * an API key, or a Google OAuth access token from the user's sign-in
- * (scope GEMINI_OAUTH_SCOPE; usage is billed to the OAuth client's Cloud project).
+ * Minimal Gemini REST client (no SDK). Authenticates with a Google OAuth
+ * access token from the user's sign-in (scope GEMINI_OAUTH_SCOPE; usage is
+ * billed to the OAuth client's Cloud project).
  */
 import type { GPart, GeminiStream } from "./gemini";
 
 const BASE = "https://generativelanguage.googleapis.com/v1beta";
 export const GEMINI_OAUTH_SCOPE = "https://www.googleapis.com/auth/generative-language.retriever";
 
-export type GeminiAuth = { apiKey: string } | { accessToken: () => Promise<string> };
+export type GeminiAuth = { accessToken: () => Promise<string> };
 
 export class GeminiApiError extends Error {
   constructor(
@@ -20,7 +20,7 @@ export class GeminiApiError extends Error {
 }
 
 async function headers(auth: GeminiAuth): Promise<Record<string, string>> {
-  return "apiKey" in auth ? { "x-goog-api-key": auth.apiKey } : { Authorization: `Bearer ${await auth.accessToken()}` };
+  return { Authorization: `Bearer ${await auth.accessToken()}` };
 }
 
 async function check(res: Response) {

@@ -18,7 +18,7 @@ import {
   type ProgramItem,
   type Snapshot,
   type TrialBalance,
-} from "@fdd/core";
+} from "@falcon/core";
 import { act } from "../lib/act";
 import { toast } from "../lib/toast";
 import { openEditor } from "./Editor";
