@@ -89,3 +89,19 @@ export async function listGeminiModels(auth: GeminiAuth): Promise<string[]> {
   } while (pageToken);
   return out;
 }
+
+/** One-shot generateContent that asks for JSON back; returns the raw text. */
+export async function geminiJson(auth: GeminiAuth, model: string, prompt: string, signal?: AbortSignal): Promise<string> {
+  const res = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+    method: "POST",
+    signal,
+    headers: { "Content-Type": "application/json", ...(await headers(auth)) },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json", temperature: 0.4 },
+    }),
+  });
+  await check(res);
+  const body = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+  return (body.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
+}

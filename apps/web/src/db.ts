@@ -41,6 +41,10 @@ class FalconDB extends Dexie {
     this.version(3)
       .stores({})
       .upgrade((tx) => tx.table("meta").delete("geminiKey"));
+    this.version(4).stores({
+      trialBalances: "id, engagementId",
+      programItems: "id, engagementId, area, workpaperId",
+    });
   }
 }
 

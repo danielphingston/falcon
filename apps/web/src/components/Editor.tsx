@@ -20,6 +20,8 @@ import { useRecord, useTable } from "../lib/hooks";
 import { formDefs, RecordForm, toLocalInput, valuesToPatch, type FormValues } from "./forms";
 import { Icon } from "./Icon";
 import { Checkbox, Pill, Sheet, statusTone } from "./ui";
+import { ReviewChecklist } from "./ReviewChecklist";
+import { ReviewPointsPanel } from "./ReviewPoints";
 
 // ---------- Editor stack (any component can open one) ----------
 
@@ -79,6 +81,8 @@ const nouns: Record<TableName, string> = {
   timeEntries: "time entry",
   days: "day",
   achievements: "badge",
+  trialBalances: "trial balance",
+  programItems: "programme step",
 };
 
 function recordToValues(table: TableName, r: Record<string, unknown> | null | undefined): FormValues {
@@ -91,6 +95,8 @@ function recordToValues(table: TableName, r: Record<string, unknown> | null | un
     else if (f.type === "hours") out[f.name] = typeof v === "number" ? String(Math.round((v / 60) * 100) / 100) : "";
     else out[f.name] = v === undefined || v === null ? "" : String(v);
   }
+  // Context for pickers (e.g. a programme step's work-paper list); not saved.
+  if (typeof r?.engagementId === "string" && !("engagementId" in out)) out.engagementId = r.engagementId;
   // Sensible defaults for selects so the form shows what will be saved.
   for (const f of formDefs[table])
     if (f.type === "select" && !out[f.name] && f.options?.length)
@@ -177,6 +183,7 @@ function Extras({ table, record }: { table: TableName; record: AnyEntity }) {
   const remindable = table === "tasks" || table === "infoRequests" || table === "followUps" || table === "workpapers";
   return (
     <div className="mt-5 space-y-5">
+      {table === "workpapers" && <ReviewChecklist wp={record as EntityMap["workpapers"]} />}
       {table === "workpapers" && <ReviewPointsPanel wp={record as EntityMap["workpapers"]} />}
       {(table === "infoRequests" || table === "followUps") && (
         <ChasePanel table={table} record={record as EntityMap["infoRequests"] | EntityMap["followUps"]} />
@@ -224,88 +231,6 @@ function ChasePanel({ table, record }: { table: "infoRequests" | "followUps"; re
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-function ReviewPointsPanel({ wp }: { wp: EntityMap["workpapers"] }) {
-  const points = (useTable("reviewPoints") ?? []).filter((p) => p.workpaperId === wp.id);
-  const [draft, setDraft] = useState("");
-  const open = points.filter((p) => p.status !== "cleared").length;
-
-  const add = async () => {
-    const lines = draft.split("\n").map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim()).filter(Boolean);
-    if (!lines.length) return;
-    const res = await act(lines.length > 1 ? `${lines.length} review points added` : "Review point added", async (ctx) => {
-      const out = [];
-      for (const text of lines) out.push(await create(ctx, "reviewPoints", { workpaperId: wp.id, engagementId: wp.engagementId, text }));
-      if (wp.status !== "points_raised" && wp.myRole === "reviewer") await update(ctx, "workpapers", wp.id, { status: "points_raised" });
-      return out;
-    });
-    if (res) setDraft("");
-  };
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Review points</h3>
-        <span className="text-xs muted">
-          {open} open · {points.length - open} cleared
-        </span>
-      </div>
-      <div className="space-y-1.5">
-        <AnimatePresence initial={false}>
-          {points
-            .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-            .map((p) => (
-              <motion.div
-                key={p.id}
-                layout
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, height: 0 }}
-                className="flex items-start gap-3 rounded-xl border border-[var(--border)] px-3 py-2"
-              >
-                <div className="pt-0.5">
-                  <Checkbox
-                    checked={p.status === "cleared"}
-                    label="Clear review point"
-                    onChange={(on) =>
-                      act(on ? "Point cleared" : "Point reopened", (ctx) =>
-                        update(ctx, "reviewPoints", p.id, { status: on ? "cleared" : "open", clearedAt: on ? new Date().toISOString() : null }),
-                      )
-                    }
-                  />
-                </div>
-                <p className={`flex-1 text-sm ${p.status === "cleared" ? "line-through muted" : ""}`}>{p.text}</p>
-                <button
-                  className="shrink-0"
-                  title="Cycle status"
-                  onClick={() =>
-                    act(null, (ctx) =>
-                      update(ctx, "reviewPoints", p.id, { status: p.status === "open" ? "addressed" : p.status === "addressed" ? "cleared" : "open" }),
-                    )
-                  }
-                >
-                  <Pill tone={statusTone[p.status]}>{labels.reviewPointStatus[p.status]}</Pill>
-                </button>
-              </motion.div>
-            ))}
-        </AnimatePresence>
-      </div>
-      <textarea
-        className="input"
-        rows={2}
-        placeholder="Add review points, one per line (pasting a list works)"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void add();
-        }}
-      />
-      <button className="btn btn-soft btn-sm" onClick={add} disabled={!draft.trim()}>
-        <Icon name="plus" size={14} /> Add points
-      </button>
     </div>
   );
 }

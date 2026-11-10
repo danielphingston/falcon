@@ -98,6 +98,22 @@ The file is read on your device only. Importing again later **updates** existing
 3. Open a work paper and add review points, one per line. Pasting a list works.
 4. Tick **Clear review point** when a point is resolved.
 
+**Review cues: "has this been done on the work paper?"**
+
+Every work paper you open shows **Review cues** for its area: the checks a reviewer should expect to find on it.
+
+- The area comes from the WP's **Programme area**. If that's empty, the app guesses it from the title (for example "Trade receivables" or "NWC") and says so. Use **Change area** if the guess is wrong.
+- If the engagement has a work programme (TB uploaded), the cues are its steps for that area. Otherwise they come from the procedure library for the engagement type, with key steps first.
+- Tap **Start guided review** to go one question at a time. Answer **Yes, done**, **No / issue**, **N.A.** or **Skip**. A "No" asks what's missing, lets you raise it as a review point, and shows what more to check and why. The dots at the top show your progress, and you can tap any dot to jump to that question. At the end you get a summary, plus shortcuts to revisit the flagged questions or answer the rest.
+- **List view** shows the same cues with ✓ / ⚑ / n.a. buttons.
+- Each answer is saved as a work-programme step linked to the WP, so it syncs and shows in the **Programme** tab.
+
+**Counter-questions on review points: "have you also checked…?"**
+
+- While you type a review point, the app suggests related checks from the procedure library.
+- When you add a point, it is challenged straight away. Related checks are attached at once. If the assistant is set up (Settings → AI assistant), Gemini also adds 2–4 specific questions, marked **AI**. These are based on the WP, its area, the TB numbers and trend flags, your other points and the steps you've already passed.
+- For each question you can choose **Add as review point**, **Add to programme** (it becomes a step such as "Check dispatch documents…") or **Dismiss**. Tap **Challenge with AI** (or **Challenge again**) on any open point to ask again.
+
 ## Follow-ups (Waiting on)
 
 **What it's for:** everything you are waiting for, grouped by person, longest-waiting first. It includes open IRL items.
@@ -192,3 +208,19 @@ Use **New chat** to start again. Chat history stays on this device.
 - **Safari sign-in leaves the app.** Safari signs you in by redirecting the page to Google and back, not by a pop-up. This is expected.
 - **New version not showing.** Close the app completely and reopen it. The version is at the bottom of **Settings**.
 - **Gemini permission errors.** Tap **Allow Gemini** in Settings to reconnect Google with the Gemini permission, and check that the Generative Language API and billing are enabled in your Google Cloud project.
+
+## Work programme (from the trial balance)
+
+**What it's for:** turning a client's TB into a complete, tailored checklist of what to do on the engagement, and helping you review it.
+
+**How to**
+
+1. Open the engagement → **Programme** tab → **Upload trial balance**. Use Tally's Trial Balance export to Excel (detailed, with ledgers; add the previous year as a comparative if you can), or any Excel/CSV TB.
+2. Confirm the **year under audit**, what to **compare with**, the **engagement type** (Statutory audit, Financial due diligence, Internal audit) and the **industry** (D2C/e-commerce, manufacturing, IT/services/SaaS, trading).
+3. Check the **mapping**: every ledger is placed in an area (receivables, inventory, GST/TDS dues, revenue…) from its Tally group and name. Fix any that are wrong; the app remembers your corrections next time. The screen tells you if debits don't equal credits.
+4. Tap **Save & build programme**. You get:
+   - **Materiality** (1% of revenue by default; type your own figure to change it). Areas below performance materiality get only their key steps.
+   - **Trend checks** per area, e.g. "Revenue +10%, so receivables would be expected at +8% to +12%; actual +33%". Flagged checks list what to look at; **Add these checks to the programme** puts them in.
+   - **Procedures** for every area, by assertion, with the reason for each. Tick them off, assign them to a team member and link a work paper by tapping a step.
+5. **Reviewing:** give a work paper a **Programme area** (e.g. Trade receivables). When you open it, **Review cues** ask whether each of that area's steps has been done (see *Work papers and review points*). Mark each ✓, ⚑ or n.a., or use **Start guided review**. When you flag one, note what you found, and the app shows **what more to check, and why**. Add any of those to the programme, raise them as review points, or tap **Ask AI what else to check** for suggestions based on the balances, trends and your notes.
+6. **Copy** puts the whole programme on the clipboard for Excel. **New TB** re-imports (for example a revised TB); it adds what's missing and keeps your progress.
