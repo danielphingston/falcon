@@ -98,9 +98,24 @@ The file is read on your device only. Importing again later **updates** existing
 3. Open a work paper and add review points, one per line. Pasting a list works.
 4. Tick **Clear review point** when a point is resolved.
 
-**Review cues: "has this been done on the work paper?"**
+**Your firm's templates first**
 
-Every work paper you open shows **Review cues** for its area: the checks a reviewer should expect to find on it.
+Import your firm's work-paper templates once: **Settings → Firm checklists → Import → Choose folder** (or **Choose files** on a phone). Falcon reads each workbook's **Checklist**, **Procedures** and **Index** sheets, and turns them into review questions, each with its tests ("1. … 2. … 3. …") as ticks. Old copies (a "Dump" folder, "Copy of…") and duplicate names start unticked. Check the preview, rename anything, then **Save**. Re-importing a template with the same name updates it and keeps everything you've added.
+
+- 🔒 **The templates stay on this device.** They are not synced to Google Drive, not in backups, and never sent to the AI. To use them on your phone or another laptop, use **Settings → Firm checklists → Export**, then **Import file** on the other device. Keep that file private.
+- When you open a work paper, Falcon picks the matching template from its title (for example "Trade receivables" → *Accounts Receivable*) and shows "Firm template: … · change". Tap **change** to choose a different one, or **No template**.
+- **Start review: firm basics first** asks the template's questions one at a time: inputs, then each check with its tests, then risks, disclosures and "sections of the work paper completed". Tick tests as you go; **Yes, done** ticks them all.
+- **No / issue** asks what's missing. **Raise as a review point** without a note lists the tests still open. Points raised from firm checks are marked 🔒 and kept off the AI.
+
+**It learns as you go**
+
+- Tap **New check** during the guided review (or **Add a check for next time** in the list) and type the check. Choose where it applies: **every WP on this template** (the default) or **only this WP**.
+- The next time you open a matching work paper, a 🔔 reminder at the top lists the checks you added that haven't been confirmed on it, marked **NEW**. Answer them there or in the review: they come right after the firm basics.
+- **Stop asking** (under a check's details) removes a check you no longer need.
+
+**Further checks: "has this been done on the work paper?"**
+
+After the firm's basics and your own checks come the further checks for the WP's area.
 
 - The area comes from the WP's **Programme area**. If that's empty, the app guesses it from the title (for example "Trade receivables" or "NWC") and says so. Use **Change area** if the guess is wrong.
 - If the engagement has a work programme (TB uploaded), the cues are its steps for that area. Otherwise they come from the procedure library for the engagement type, with key steps first.
@@ -192,7 +207,9 @@ Use **New chat** to start again. Chat history stays on this device.
 
 **Working week, look & feel, time & progress:** working days, holidays, chase frequency, theme, focus targets and timesheet rounding.
 
-**Data:** **Export** downloads a full backup file. **Import** merges a backup (newer records win, nothing is lost). **Import sheet** opens the allocation import. **Erase** deletes everything on this device, so export first. The version number is at the bottom.
+**Firm checklists:** import the firm's work-paper templates, see them, remove one, or export/import them to move to another device. They stay on this device only.
+
+**Data:** **Export** downloads a full backup file (firm checklists are not included). **Import** merges a backup (newer records win, nothing is lost). **Import sheet** opens the allocation import. **Erase** deletes everything on this device, so export first. The version number is at the bottom.
 
 ## Privacy and good practice
 

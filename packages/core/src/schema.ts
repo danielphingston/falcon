@@ -118,6 +118,8 @@ export const reviewPointFields = z.object({
   assignedToId: z.string().optional(),
   status: z.enum(reviewPointStatuses).default("open"),
   clearedAt: isoDateTime.optional(),
+  /** Raised from a firm checklist: never sent to the AI. */
+  private: z.boolean().optional(),
   /** "Have you also checked…?" counter-questions on this point (AI or offline). */
   challenges: z
     .array(

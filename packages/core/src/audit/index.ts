@@ -7,3 +7,4 @@ export * from "./generate";
 export * from "./programme";
 export { procedureLibrary } from "./library";
 export * from "./reviewAssist";
+export * from "./firmTemplates";

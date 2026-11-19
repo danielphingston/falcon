@@ -205,18 +205,24 @@ function Challenges({
             {show ? "▾" : "▸"} Have you also checked… ({openOnes.length})
           </button>
         )}
-        <button className="inline-flex items-center gap-1 muted hover:text-[var(--accent)]" onClick={onChallenge} disabled={busy}>
-          <Icon name="sparkles" size={12} />
-          {busy ? (
-            <motion.span animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1.2 }}>
-              AI is challenging this point…
-            </motion.span>
-          ) : hasAi ? (
-            "Challenge again"
-          ) : (
-            "Challenge with AI"
-          )}
-        </button>
+        {point.private ? (
+          <span className="muted" title="Raised from a firm checklist, so it isn't sent to the AI">
+            🔒 Firm checklist · kept off AI
+          </span>
+        ) : (
+          <button className="inline-flex items-center gap-1 muted hover:text-[var(--accent)]" onClick={onChallenge} disabled={busy}>
+            <Icon name="sparkles" size={12} />
+            {busy ? (
+              <motion.span animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1.2 }}>
+                AI is challenging this point…
+              </motion.span>
+            ) : hasAi ? (
+              "Challenge again"
+            ) : (
+              "Challenge with AI"
+            )}
+          </button>
+        )}
       </div>
       <AnimatePresence initial={false}>
         {show && openOnes.length > 0 && (
