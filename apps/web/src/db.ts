@@ -4,6 +4,9 @@ import {
   syncedSettingsKeys,
   tableNames,
   type Change,
+  type FirmAnswer,
+  type FirmTemplate,
+  type LearnedCheck,
   type EntityMap,
   type Settings,
   type Store,
@@ -15,6 +18,12 @@ type Tables = { [K in TableName]: Table<EntityMap[K], string> };
 class FalconDB extends Dexie {
   changes!: Table<Change, string>;
   meta!: Table<{ key: string; value: unknown }, string>;
+  // Firm templates and what the reviewer learns: this device only. Not part of
+  // the synced schema, so they never go to Drive sync, backups or the AI.
+  firmTemplates!: Table<FirmTemplate, string>;
+  firmLearned!: Table<LearnedCheck, string>;
+  firmAnswers!: Table<FirmAnswer, string>;
+  firmLinks!: Table<{ workpaperId: string; templateId: string | null }, string>;
 
   constructor() {
     // The app's old name. Renaming the database would strand existing data.
@@ -44,6 +53,12 @@ class FalconDB extends Dexie {
     this.version(4).stores({
       trialBalances: "id, engagementId",
       programItems: "id, engagementId, area, workpaperId",
+    });
+    this.version(5).stores({
+      firmTemplates: "id, name",
+      firmLearned: "id, templateId, workpaperId, area",
+      firmAnswers: "id, workpaperId",
+      firmLinks: "workpaperId",
     });
   }
 }

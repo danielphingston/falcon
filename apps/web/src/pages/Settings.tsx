@@ -10,6 +10,8 @@ import { loadSampleData } from "../lib/sample";
 import { useLiveQuery } from "dexie-react-hooks";
 import { SyncBadge } from "../components/SyncBadge";
 import { ImportAllocation } from "../components/ImportAllocation";
+import { FirmImport } from "../components/FirmImport";
+import { deleteTemplate, exportLibrary, importLibrary, useFirmLearned, useFirmTemplates } from "../lib/firm";
 import { connectGoogle, disconnectGoogle, hasScope, readAuth, warmGoogle } from "../lib/google";
 import { markSignedOut, scheduleSync, syncNow, useSyncStatus } from "../lib/sync";
 import { toast } from "../lib/toast";
@@ -168,6 +170,8 @@ export function SettingsPage() {
           )}
         </Row>
       </Group>
+
+      <FirmGroup />
 
       <Group title="Data">
         <Row label="Back up" hint="Download everything as a JSON file">
@@ -404,6 +408,74 @@ function AiGroup({ s }: { s: Settings }) {
       <p className="px-4 py-3 text-xs muted">
         Messages and attachments you send go to Google's Gemini API. Use a paid (billing-enabled) project or key, so Google doesn't use them to improve its products, and check your firm's policy before sharing client documents.
       </p>
+    </Group>
+  );
+}
+
+
+/** The firm's templates on this device (never synced). */
+function FirmGroup() {
+  const templates = useFirmTemplates();
+  const learned = useFirmLearned();
+  const [open, setOpen] = useState(false);
+  const [list, setList] = useState(false);
+  const libRef = useRef<HTMLInputElement>(null);
+  const count = templates?.length ?? 0;
+  return (
+    <Group title="Firm checklists">
+      <Row label="Firm templates" hint="Checklists and tests from the firm's work-paper templates. Kept on this device only: no sync, no backups, never sent to the AI">
+        <button className="btn btn-soft btn-sm" onClick={() => setOpen(true)}>
+          <Icon name="upload" size={14} /> {count ? "Import more" : "Import"}
+        </button>
+        <FirmImport open={open} onClose={() => setOpen(false)} />
+      </Row>
+      {count > 0 && (
+        <Row label={`${count} templates · ${learned?.length ?? 0} checks you added`} hint="Tap to see them">
+          <button className="btn btn-ghost btn-sm" onClick={() => setList((v) => !v)}>
+            {list ? "Hide" : "Show"}
+          </button>
+        </Row>
+      )}
+      {list &&
+        templates?.map((t) => (
+          <div key={t.id} className="flex items-center gap-3 px-4 py-2">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{t.name}</p>
+              <p className="text-xs muted">
+                {t.items.length} questions · {learned?.filter((l) => l.templateId === t.id).length ?? 0} added checks
+              </p>
+            </div>
+            <button className="btn btn-ghost btn-sm text-rose-600" onClick={() => void deleteTemplate(t)} aria-label={`Remove ${t.name}`}>
+              <Icon name="trash" size={14} />
+            </button>
+          </div>
+        ))}
+      <Row label="Move to another device" hint="Export a file here, import it on your phone or other laptop. Keep the file private">
+        <div className="flex gap-2">
+          <button className="btn btn-soft btn-sm" disabled={!count && !learned?.length} onClick={() => void exportLibrary()}>
+            <Icon name="download" size={14} /> Export
+          </button>
+          <button className="btn btn-soft btn-sm" onClick={() => libRef.current?.click()}>
+            <Icon name="upload" size={14} /> Import file
+          </button>
+        </div>
+        <input
+          ref={libRef}
+          type="file"
+          hidden
+          accept=".json,application/json"
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (!f) return;
+            try {
+              toast({ message: await importLibrary(f), tone: "success" });
+            } catch (err) {
+              toast({ message: err instanceof Error ? err.message : String(err), tone: "error" });
+            }
+          }}
+        />
+      </Row>
     </Group>
   );
 }

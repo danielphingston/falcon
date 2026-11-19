@@ -92,6 +92,7 @@ export async function challengeWithAi(pointId: string, quiet = false): Promise<s
   const point = snap.reviewPoints.find((p) => p.id === pointId);
   const wp = point && snap.workpapers.find((w) => w.id === point.workpaperId);
   if (!point || !wp) return null;
+  if (point.private) return quiet ? null : "This point came from a firm checklist, so it isn't sent to the AI.";
   const c = wpContext(snap, wp);
   const items = snap.programItems.filter((i) => i.engagementId === wp.engagementId && !i.deleted && (c.areas.includes(i.area as AreaId) || i.workpaperId === wp.id));
   const prompt = challengePrompt({
@@ -101,7 +102,7 @@ export async function challengeWithAi(pointId: string, quiet = false): Promise<s
     workpaper: `${wp.ref} ${wp.title}`.trim(),
     areas: c.areas,
     point: point.text,
-    otherPoints: snap.reviewPoints.filter((p) => p.workpaperId === wp.id && p.id !== point.id && !p.deleted).map((p) => p.text),
+    otherPoints: snap.reviewPoints.filter((p) => p.workpaperId === wp.id && p.id !== point.id && !p.deleted && !p.private).map((p) => p.text),
     facts: c.facts,
     done: items.filter((i) => i.review === "ok").map((i) => i.text),
   });

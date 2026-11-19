@@ -32,6 +32,10 @@ The screens and the future AI chat/connector call the same actions in `packages/
 
 Engagement → **Programme**: upload a Tally/Excel trial balance and the app maps every ledger to an area, suggests materiality, runs trend checks (e.g. receivables growth vs revenue growth, inventory vs COGS, payables vs purchases, margins, implied interest rate), and builds a checklist of procedures from a library of ~420 steps for statutory audit, FDD and internal audit, tailored to D2C, manufacturing, services and trading. When reviewing a work paper, the app asks "has this been done on the WP?" one step at a time (also without a TB, from the library), flagged steps show what more to check and why, and every review point you write is challenged with "have you also checked…?" questions (from the library at once, then from Gemini). See docs/USER_GUIDE.md.
 
+## Firm checklists (stay on the device)
+
+Settings → **Firm checklists** imports the firm's own work-paper templates (Excel). Falcon reads their Checklist / Procedures / Index sheets in the browser and turns them into review questions with tests. When a work paper is reviewed, the matching template's basics are asked first, one at a time, then checks the reviewer added on earlier reviews (with a reminder until they're confirmed), then the further checks above. Templates, added checks and answers live in device-only IndexedDB tables: not synced, not in backups, never sent to the AI. Moving them to another device is an export/import file. Never commit a firm's templates to this repo (`.gitignore` covers the usual folder and `*.firm.json` exports).
+
 ## Quick-add syntax
 
 | Type | Example |

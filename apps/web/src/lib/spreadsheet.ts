@@ -5,14 +5,20 @@
  */
 import type { SheetData } from "@falcon/core";
 
-const MAX_BYTES = 20 * 1024 * 1024;
+export interface ReadOptions {
+  /** Default 20 MB. */
+  maxBytes?: number;
+  /** Read only the sheets whose names pass (others are skipped without being decompressed). */
+  sheets?: (name: string) => boolean;
+}
 
-export async function readSpreadsheet(file: File): Promise<SheetData[]> {
-  if (file.size > MAX_BYTES) throw new Error("That file is over 20 MB");
+export async function readSpreadsheet(file: File, opts: ReadOptions = {}): Promise<SheetData[]> {
+  const max = opts.maxBytes ?? 20 * 1024 * 1024;
+  if (file.size > max) throw new Error(`That file is over ${Math.round(max / 1024 / 1024)} MB`);
   const lower = file.name.toLowerCase();
   if (lower.endsWith(".csv") || file.type === "text/csv") return [{ name: file.name.replace(/\.csv$/i, ""), rows: parseCsv(await file.text()) }];
   if (lower.endsWith(".xls")) throw new Error("Old .xls files aren't supported. In Excel, use File → Save As → Excel Workbook (.xlsx).");
-  return readXlsx(new Uint8Array(await file.arrayBuffer()));
+  return readXlsx(new Uint8Array(await file.arrayBuffer()), opts.sheets);
 }
 
 // ---------- CSV ----------
@@ -45,7 +51,8 @@ export function parseCsv(text: string): string[][] {
 
 // ---------- ZIP ----------
 
-async function unzip(bytes: Uint8Array): Promise<Map<string, Uint8Array>> {
+/** Zip entries we read, decompressed only when asked for. */
+async function unzip(bytes: Uint8Array): Promise<Map<string, () => Promise<Uint8Array>>> {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   // End of central directory record: scan back from the end (comment can be up to 64 KB).
   let eocd = -1;
@@ -57,7 +64,7 @@ async function unzip(bytes: Uint8Array): Promise<Map<string, Uint8Array>> {
   if (eocd < 0) throw new Error("This doesn't look like an Excel (.xlsx) file");
   const count = view.getUint16(eocd + 10, true);
   let p = view.getUint32(eocd + 16, true);
-  const files = new Map<string, Uint8Array>();
+  const files = new Map<string, () => Promise<Uint8Array>>();
   const decoder = new TextDecoder();
   for (let n = 0; n < count; n++) {
     if (view.getUint32(p, true) !== 0x02014b50) throw new Error("The .xlsx file is damaged");
@@ -73,9 +80,8 @@ async function unzip(bytes: Uint8Array): Promise<Map<string, Uint8Array>> {
     if (!/^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml|worksheets\/[^/]+\.xml)$/.test(name)) continue;
     const dataStart = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true);
     const raw = bytes.subarray(dataStart, dataStart + size);
-    if (method === 0) files.set(name, raw);
-    else if (method === 8) files.set(name, await inflate(raw));
-    else throw new Error("This .xlsx uses an unsupported compression method");
+    if (method !== 0 && method !== 8) throw new Error("This .xlsx uses an unsupported compression method");
+    files.set(name, () => (method === 0 ? Promise.resolve(raw) : inflate(raw)));
   }
   return files;
 }
@@ -97,20 +103,22 @@ function colIndex(ref: string): number {
   return [...letters].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
 }
 
-async function readXlsx(bytes: Uint8Array): Promise<SheetData[]> {
-  const files = await unzip(bytes);
-  const workbook = xml(files.get("xl/workbook.xml"));
+async function readXlsx(bytes: Uint8Array, only?: (name: string) => boolean): Promise<SheetData[]> {
+  const zip = await unzip(bytes);
+  const get = async (name: string) => zip.get(name)?.();
+  const workbook = xml(await get("xl/workbook.xml"));
   if (!workbook) throw new Error("This doesn't look like an Excel workbook");
   const rels = new Map(
-    els(xml(files.get("xl/_rels/workbook.xml.rels")) ?? workbook, "Relationship").map((r) => [r.getAttribute("Id"), r.getAttribute("Target") ?? ""]),
+    els(xml(await get("xl/_rels/workbook.xml.rels")) ?? workbook, "Relationship").map((r) => [r.getAttribute("Id"), r.getAttribute("Target") ?? ""]),
   );
-  const strings = els(xml(files.get("xl/sharedStrings.xml")) ?? workbook, "si").map(text);
+  const strings = els(xml(await get("xl/sharedStrings.xml")) ?? workbook, "si").map(text);
 
   const sheets: SheetData[] = [];
   for (const s of els(workbook, "sheet")) {
+    if (only && !only(s.getAttribute("name") ?? "")) continue;
     const rid = s.getAttribute("r:id") ?? s.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
     const target = (rels.get(rid) ?? "").replace(/^\/?(xl\/)?/, "");
-    const doc = xml(files.get(`xl/${target}`));
+    const doc = xml(await get(`xl/${target}`));
     if (!doc) continue;
     const rows: string[][] = [];
     for (const r of els(doc, "row")) {
@@ -124,7 +132,7 @@ async function readXlsx(bytes: Uint8Array): Promise<SheetData[]> {
       }
     }
     // Fill gaps so every row is a dense array.
-    const width = Math.max(0, ...rows.map((r) => r?.length ?? 0));
+    const width = rows.reduce((w, r) => Math.max(w, r?.length ?? 0), 0);
     sheets.push({ name: s.getAttribute("name") ?? `Sheet ${sheets.length + 1}`, rows: Array.from(rows, (r) => Array.from({ length: width }, (_, i) => r?.[i] ?? "")) });
   }
   return sheets;

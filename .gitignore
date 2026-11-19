@@ -9,3 +9,8 @@ dev-dist/
 video/out/
 video/node_modules/
 .claude/scheduled_tasks.lock
+
+# Firm templates: confidential, never commit
+3. Execution/
+*.firm.json
+*.local.test.ts
