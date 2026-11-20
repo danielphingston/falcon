@@ -75,14 +75,24 @@ The file is read on your device only. Importing again later **updates** existing
 4. **Time:** tap **Log time** to add an entry.
 5. When the assignment finishes, tap **Close engagement** on Overview. **Reopen engagement** undoes it.
 
-## IRL and chasing
+## RFI (requests to the client) and chasing
 
-**What it's for:** tracking what the client has sent, chasing what is missing, and emailing the client in one go.
+**What it's for:** an internal copy of the RFI you sent the client, so you can track what has come in, chase what's missing, and email the client in one go.
+
+**Import the RFI you sent**
+
+1. Open the engagement's **RFI** tab and tap **Import RFI**. Choose the Excel file you sent to the client.
+2. Falcon finds the request table (Sl No / Particulars / Date of request / Status / Annexure / Remarks / Date received / Person responsible / EDR / Auditee comment) and shows a preview: the number of requests and sections, and how many are pending or received.
+3. Choose **Requested from** for requests whose "Person responsible" isn't one of your contacts, then tap **Import**.
+4. Requests are grouped by section (Generals, Trade Payables…) and numbered 1.1, 1.2 … 1.10. Sub-points ("- Sanction letter") stay with their request. The annexure, the client's comments, the person responsible and the expected date (EDR) show on each request; your remarks go into its notes.
+5. When the client sends the RFI back with updates, tap **Update from RFI** and choose the new file. Matching requests are updated (status, dates, comments); new ones are added; your chase history is kept. Nothing is duplicated.
+
+Statuses map as: Received → received, Pending / Shared → pending, Partial → partial, Not applicable → n.a., Not available → n.a. with a note.
 
 **How to**
 
-1. Open the engagement's **IRL** tab. The progress bar shows what has been received.
-2. Paste a list into **Add IRL items**, one per line. A number at the start (for example `12. Trial balance`) is kept. Choose **Requested from…**, then tap **Add N items**.
+1. The progress bar on the **RFI** tab shows what has been received, and each section shows its own count.
+2. To add requests by hand, paste a list into **Add requests**, one per line. A number at the start (for example `12. Trial balance`) is kept. Choose **Requested from…**, then tap **Add N items**.
 3. Tap **Copy pending table** and paste it into an email.
 4. Tap **Email** with the contact's first name to open a chase email with their pending items.
 5. Tap **Chased** on an item to log a chase. Tick **Mark received** when it arrives.

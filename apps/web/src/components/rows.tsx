@@ -114,11 +114,14 @@ export function IrlRow({ item, l, today, hideEngagement }: { item: InfoRequest; 
       <div className="min-w-0 flex-1">
         <p className={`truncate text-[15px] ${!open ? "line-through muted" : ""}`}>
           {item.number && <span className="mr-1.5 font-mono text-xs muted">#{item.number}</span>}
-          {item.description}
+          {item.description.split("\n")[0]}
         </p>
+        {item.clientComment && <p className="truncate text-xs text-sky-700 dark:text-sky-300">Client: {item.clientComment}</p>}
         <Meta>
           {!hideEngagement && <span>{engName(l, item.engagementId)}</span>}
-          {item.requestedFromId && <span>from {personName(l, item.requestedFromId)}</span>}
+          {item.description.includes("\n") && <span>+{item.description.split("\n").length - 1} sub-points</span>}
+          {item.annexure && <span>annexure {item.annexure}</span>}
+          {item.requestedFromId ? <span>from {personName(l, item.requestedFromId)}</span> : item.responsible && <span>from {item.responsible}</span>}
           {open && <span>{daysBetween(item.requestedOn, today)}d waiting</span>}
           {item.chaseLog.length > 0 && <span>chased {item.chaseLog.length}×</span>}
           <Due due={item.due} done={!open} />

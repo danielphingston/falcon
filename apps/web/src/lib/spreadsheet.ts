@@ -118,24 +118,89 @@ async function readXlsx(bytes: Uint8Array, only?: (name: string) => boolean): Pr
     if (only && !only(s.getAttribute("name") ?? "")) continue;
     const rid = s.getAttribute("r:id") ?? s.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
     const target = (rels.get(rid) ?? "").replace(/^\/?(xl\/)?/, "");
-    const doc = xml(await get(`xl/${target}`));
-    if (!doc) continue;
-    const rows: string[][] = [];
-    for (const r of els(doc, "row")) {
-      const ri = Number(r.getAttribute("r") ?? rows.length + 1) - 1;
-      const row: string[] = (rows[ri] = rows[ri] ?? []);
-      for (const c of els(r, "c")) {
-        const t = c.getAttribute("t");
-        const v = c.getElementsByTagName("v")[0]?.textContent ?? "";
-        const value = t === "s" ? (strings[Number(v)] ?? "") : t === "inlineStr" ? text(c) : t === "b" ? (v === "1" ? "TRUE" : "FALSE") : v;
-        row[colIndex(c.getAttribute("r") ?? "A1")] = value;
-      }
+    const bytesOfSheet = await get(`xl/${target}`);
+    if (!bytesOfSheet) continue;
+    const rows = scanSheet(new TextDecoder().decode(bytesOfSheet), strings);
+    // Dense rows, but only as wide as the table: a stray value thousands of
+    // columns out (seen in real RFIs) is cut at the first gap of 64+ empty columns.
+    const used = new Set<number>();
+    for (const r of rows) if (r) r.forEach((_, i) => used.add(i));
+    const cols = [...used].sort((a, b) => a - b);
+    let width = 0;
+    for (const c of cols) {
+      if (c - width > 64) break;
+      width = c + 1;
     }
-    // Fill gaps so every row is a dense array.
-    const width = rows.reduce((w, r) => Math.max(w, r?.length ?? 0), 0);
     sheets.push({ name: s.getAttribute("name") ?? `Sheet ${sheets.length + 1}`, rows: Array.from(rows, (r) => Array.from({ length: width }, (_, i) => r?.[i] ?? "")) });
   }
   return sheets;
+}
+
+const unescapeXml = (s: string) =>
+  s.indexOf("&") < 0
+    ? s
+    : s.replace(/&(lt|gt|quot|apos|amp|#\d+|#x[0-9a-f]+);/gi, (_, e: string) =>
+        e === "lt" ? "<" : e === "gt" ? ">" : e === "quot" ? '"' : e === "apos" ? "'" : e === "amp" ? "&" : String.fromCodePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1))),
+      );
+
+/**
+ * Reads cell values from worksheet XML with a plain scan instead of a DOM.
+ * Real workbooks often carry formatting across thousands of empty cells (a
+ * 300-row RFI can be ~100 MB of XML); those are skipped, so only cells with
+ * values cost anything.
+ */
+function scanSheet(xmlText: string, strings: string[]): string[][] {
+  const rows: string[][] = [];
+  let row = -1;
+  let col = -1;
+  let pos = 0;
+  for (;;) {
+    const lt = xmlText.indexOf("<", pos);
+    if (lt < 0) break;
+    const tagEnd = xmlText.indexOf(">", lt);
+    if (tagEnd < 0) break;
+    const c1 = xmlText.charCodeAt(lt + 1);
+    const c2 = xmlText.charCodeAt(lt + 2);
+    // <row …>
+    if (c1 === 114 /* r */ && xmlText.startsWith("ow", lt + 2) && (xmlText[lt + 4] === " " || xmlText[lt + 4] === ">")) {
+      const r = /\sr="(\d+)"/.exec(xmlText.slice(lt, tagEnd));
+      row = r ? Number(r[1]) - 1 : row + 1;
+      col = -1;
+      pos = tagEnd + 1;
+      continue;
+    }
+    // <c …/> or <c …>…</c>
+    if (c1 === 99 /* c */ && (c2 === 32 || c2 === 62)) {
+      if (xmlText.charCodeAt(tagEnd - 1) === 47 /* / */) {
+        // Empty cell, formatting only (Excel always writes r="…", so no need to track it).
+        col++;
+        pos = tagEnd + 1;
+        continue;
+      }
+      const attrs = xmlText.slice(lt + 2, tagEnd);
+      const ref = /\sr="([A-Z]+)(\d*)"/.exec(" " + attrs);
+      col = ref ? colIndex(ref[1]) : col + 1;
+      const end = xmlText.indexOf("</c>", tagEnd);
+      if (end < 0) break;
+      const inner = xmlText.slice(tagEnd + 1, end);
+      pos = end + 4;
+      const t = /\st="(\w+)"/.exec(" " + attrs)?.[1];
+      let value: string;
+      if (t === "inlineStr") value = [...inner.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((m) => m[1]).join("");
+      else {
+        const v = /<v>([\s\S]*?)<\/v>/.exec(inner)?.[1];
+        if (v === undefined) continue;
+        value = t === "s" ? (strings[Number(v)] ?? "") : t === "b" ? (v === "1" ? "TRUE" : "FALSE") : v;
+      }
+      value = t === "s" ? value : unescapeXml(value);
+      if (value === "") continue;
+      const r = ref?.[2] ? Number(ref[2]) - 1 : row;
+      (rows[r] = rows[r] ?? [])[col] = value;
+      continue;
+    }
+    pos = tagEnd + 1;
+  }
+  return rows;
 }
 
 /** Plain-text rendering of sheets, for sending a spreadsheet to the AI assistant. */

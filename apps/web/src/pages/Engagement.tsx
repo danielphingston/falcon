@@ -24,6 +24,7 @@ import { TLink, useTNavigate } from "../components/TLink";
 import { AnimatedList, EmptyState, ListItem, Pill, Segmented, statusTone } from "../components/ui";
 import { Avatar } from "../components/TeamAvatars";
 import { WorkProgramme } from "../components/WorkProgramme";
+import { RfiImport } from "../components/RfiImport";
 import { act } from "../lib/act";
 import { useSettings, useSnapshot, useToday } from "../lib/hooks";
 import { toast } from "../lib/toast";
@@ -35,7 +36,7 @@ const tabs = [
   { id: "tasks", label: "Tasks" },
   { id: "workpapers", label: "Work papers" },
   { id: "points", label: "Review points" },
-  { id: "irl", label: "IRL" },
+  { id: "irl", label: "RFI" },
   { id: "followups", label: "Follow-ups" },
   { id: "time", label: "Time" },
 ] as const;
@@ -308,12 +309,23 @@ function IrlTab({ snap, id }: TabProps) {
   const [show, setShow] = useState<"open" | "all">("open");
   const [bulk, setBulk] = useState("");
   const [from, setFrom] = useState("");
+  const [importing, setImporting] = useState(false);
   const all = snap.infoRequests.filter((r) => r.engagementId === id);
   const items = all
     .filter((r) => show === "all" || r.status === "pending" || r.status === "partial")
     .sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }) || a.createdAt.localeCompare(b.createdAt));
   const open = all.filter((r) => r.status === "pending" || r.status === "partial");
   const received = all.length - open.length;
+  // Group by RFI section, in the order sections first appear by number.
+  const sections: [string, typeof items][] = [];
+  for (const r of items) {
+    const k = r.section ?? "";
+    const g = sections.find(([s]) => s === k);
+    if (g) g[1].push(r);
+    else sections.push([k, [r]]);
+  }
+  // Requests without a section go after the RFI sections.
+  sections.sort(([a], [b]) => Number(!a) - Number(!b));
   const clients = snap.people.filter((p) => p.role === "client");
 
   const copyTable = async () => {
@@ -390,25 +402,59 @@ function IrlTab({ snap, id }: TabProps) {
         </div>
       )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <Segmented id="irl-show" value={show} onChange={setShow} options={[{ value: "open", label: "Pending" }, { value: "all", label: "All" }]} />
-        <button className="btn btn-ghost btn-sm" onClick={() => openEditor({ table: "infoRequests", defaults: { engagementId: id, requestedOn: today } })}>
-          <Icon name="plus" size={14} /> One item
-        </button>
+        <div className="flex gap-1">
+          <button className="btn btn-soft btn-sm" onClick={() => setImporting(true)}>
+            <Icon name="upload" size={14} /> {all.some((r) => r.section) ? "Update from RFI" : "Import RFI"}
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={() => openEditor({ table: "infoRequests", defaults: { engagementId: id, requestedOn: today } })}>
+            <Icon name="plus" size={14} /> One item
+          </button>
+        </div>
       </div>
+      <RfiImport open={importing} onClose={() => setImporting(false)} engagementId={id} existing={all} clients={clients} today={today} />
 
       {items.length ? (
-        <AnimatedList>
-          {items.map((r) => (
-            <IrlRow key={r.id} item={r} l={l} today={today} hideEngagement />
-          ))}
-        </AnimatedList>
+        sections.length > 1 ? (
+          <div className="space-y-4">
+            {sections.map(([section, list]) => {
+              const allIn = all.filter((r) => (r.section ?? "") === section);
+              const done = allIn.filter((r) => r.status === "received" || r.status === "na").length;
+              return (
+                <section key={section || "none"} className="space-y-1.5">
+                  <div className="flex items-baseline justify-between px-1">
+                    <h3 className="text-sm font-semibold">{section || "Other requests"}</h3>
+                    <span className="text-xs muted">
+                      {done}/{allIn.length} received
+                    </span>
+                  </div>
+                  <AnimatedList>
+                    {list.map((r) => (
+                      <IrlRow key={r.id} item={r} l={l} today={today} hideEngagement />
+                    ))}
+                  </AnimatedList>
+                </section>
+              );
+            })}
+          </div>
+        ) : (
+          <AnimatedList>
+            {items.map((r) => (
+              <IrlRow key={r.id} item={r} l={l} today={today} hideEngagement />
+            ))}
+          </AnimatedList>
+        )
       ) : (
-        <EmptyState icon="inbox" title={all.length ? "Everything received 🎉" : "No IRL items yet"} hint={all.length ? undefined : "Paste your information request list below, one item per line."} />
+        <EmptyState
+          icon="inbox"
+          title={all.length ? "Everything received 🎉" : "No RFI items yet"}
+          hint={all.length ? undefined : "Import the RFI you sent to the client, or paste requests below, one per line."}
+        />
       )}
 
       <div className="card space-y-2 p-4">
-        <p className="text-sm font-semibold">Add IRL items</p>
+        <p className="text-sm font-semibold">Add requests</p>
         <textarea
           className="input font-mono text-sm"
           rows={4}
