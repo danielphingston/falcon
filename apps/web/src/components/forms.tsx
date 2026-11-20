@@ -91,7 +91,7 @@ export const formDefs: Record<TableName, FieldDef[]> = {
     { name: "raisedById", label: "Raised by", type: "person", roles: ["manager", "partner"] },
   ],
   infoRequests: [
-    { name: "number", label: "IRL #", type: "text", placeholder: "12", half: true },
+    { name: "number", label: "RFI #", type: "text", placeholder: "8.3", half: true },
     { name: "status", label: "Status", type: "select", options: opts(irlStatuses, labels.irlStatus), half: true },
     { name: "description", label: "Item requested", type: "textarea", required: true },
     { name: "engagementId", label: "Engagement", type: "engagement", required: true },
@@ -99,7 +99,11 @@ export const formDefs: Record<TableName, FieldDef[]> = {
     { name: "requestedOn", label: "Requested on", type: "date", required: true, half: true },
     { name: "due", label: "Due", type: "date", half: true },
     { name: "nextChaseOn", label: "Next chase", type: "date", half: true },
-    { name: "notes", label: "Notes", type: "textarea" },
+    { name: "section", label: "RFI section", type: "text", half: true, placeholder: "e.g. Trade Payables" },
+    { name: "annexure", label: "Annexure", type: "text", half: true },
+    { name: "responsible", label: "Person responsible (client)", type: "text" },
+    { name: "clientComment", label: "Client's comment", type: "textarea" },
+    { name: "notes", label: "Our remarks", type: "textarea" },
   ],
   followUps: [
     { name: "about", label: "Waiting for", type: "text", required: true, placeholder: "e.g. Sign-off on NWC adjustments" },

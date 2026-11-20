@@ -148,6 +148,14 @@ export const infoRequestFields = z.object({
   notes: z.string().optional(),
   /** Set automatically when the item becomes received / n.a. */
   receivedAt: isoDateTime.optional(),
+  /** RFI section, e.g. "Trade Payables". */
+  section: z.string().optional(),
+  /** Annexure / format the client should fill, as named in the RFI. */
+  annexure: z.string().optional(),
+  /** Client-side person responsible, as written in the RFI (when not a contact in the app). */
+  responsible: z.string().optional(),
+  /** The client's (auditee's) comments from the RFI. */
+  clientComment: z.string().optional(),
 });
 
 // ---------- Follow-ups ----------
