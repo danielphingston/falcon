@@ -350,8 +350,13 @@ export function linkPrompt(opts: {
   steps: Pick<PlanItem, "id" | "number" | "area" | "lead" | "text">[];
   rfi: Pick<InfoRequest, "number" | "section" | "subsection" | "description">[];
 }): string {
-  const steps = opts.steps.map((s, i) => `S${i + 1} [${s.area}] ${s.lead ? `${s.lead}: ` : ""}${s.text.replace(/\s+/g, " ")}`).join("\n");
-  const rfi = opts.rfi.map((r) => `${r.number} [${[r.section, r.subsection].filter(Boolean).join(" › ")}] ${r.description.replace(/\s+/g, " ")}`).join("\n");
+  // Kept short to save tokens: long descriptions are cut, sub-headings dropped.
+  const cut = (s: string, n: number) => {
+    const t = s.replace(/\s+/g, " ").trim();
+    return t.length > n ? `${t.slice(0, n - 1)}…` : t;
+  };
+  const steps = opts.steps.map((s, i) => `S${i + 1} [${cut(s.area, 30)}] ${cut(`${s.lead ? `${s.lead}: ` : ""}${s.text}`, 180)}`).join("\n");
+  const rfi = opts.rfi.map((r) => `${r.number}${r.section ? ` [${cut(r.section, 25)}]` : ""} ${cut(r.description, 110)}`).join("\n");
   return `You are an audit senior in India planning fieldwork for ${opts.engagement}${opts.kind ? ` (${opts.kind})` : ""}.
 
 For each work plan step below, decide which client inputs it needs before the team can execute it:

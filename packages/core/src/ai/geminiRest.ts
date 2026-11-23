@@ -35,19 +35,44 @@ async function check(res: Response) {
   throw new GeminiApiError(res.status, msg);
 }
 
+/** "Busy" answers worth another try: rate limit, overloaded, gateway errors. */
+export const isBusy = (e: unknown) => e instanceof GeminiApiError && [429, 500, 502, 503, 504].includes(e.status);
+const BUSY = new Set([429, 500, 502, 503, 504]);
+const DELAYS = [1500, 4000];
+
+const wait = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => (clearTimeout(t), reject(signal.reason)), { once: true });
+  });
+
+/** POST that retries twice (1.5 s, then 4 s) when Gemini says it's busy. */
+async function post(url: string, auth: GeminiAuth, body: unknown, signal?: AbortSignal): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, {
+      method: "POST",
+      signal,
+      headers: { "Content-Type": "application/json", ...(await headers(auth)) },
+      body: JSON.stringify(body),
+    });
+    if (res.ok || !BUSY.has(res.status) || attempt >= DELAYS.length) return res;
+    await wait(DELAYS[attempt], signal);
+  }
+}
+
 /** Streams generateContent over server-sent events. */
 export function geminiRestStream(auth: GeminiAuth, model: string): GeminiStream {
   return async function* (req) {
-    const res = await fetch(`${BASE}/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
-      method: "POST",
-      signal: req.signal,
-      headers: { "Content-Type": "application/json", ...(await headers(auth)) },
-      body: JSON.stringify({
+    const res = await post(
+      `${BASE}/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`,
+      auth,
+      {
         contents: req.contents,
         systemInstruction: { parts: [{ text: req.systemInstruction }] },
         tools: [{ functionDeclarations: req.functionDeclarations }],
-      }),
-    });
+      },
+      req.signal,
+    );
     await check(res);
     const reader = res.body!.getReader();
     const decoder = new TextDecoder();
@@ -92,16 +117,47 @@ export async function listGeminiModels(auth: GeminiAuth): Promise<string[]> {
 
 /** One-shot generateContent that asks for JSON back; returns the raw text. */
 export async function geminiJson(auth: GeminiAuth, model: string, prompt: string, signal?: AbortSignal): Promise<string> {
-  const res = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
-    method: "POST",
+  const res = await post(
+    `${BASE}/models/${encodeURIComponent(model)}:generateContent`,
+    auth,
+    { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json", temperature: 0.4 } },
     signal,
-    headers: { "Content-Type": "application/json", ...(await headers(auth)) },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: "application/json", temperature: 0.4 },
-    }),
-  });
+  );
   await check(res);
   const body = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
   return (body.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
+}
+
+let modelList: Promise<string[]> | undefined;
+
+/** Lighter models to try when the chosen one stays busy: flash-lite first, then other flash models. */
+export async function fallbackModels(auth: GeminiAuth, model: string): Promise<string[]> {
+  modelList ??= listGeminiModels(auth).catch(() => {
+    modelList = undefined;
+    return [];
+  });
+  const usable = (await modelList).filter((m) => m !== model && /flash/.test(m) && !/image|tts|audio|live|embed|vision/.test(m));
+  return [...usable.filter((m) => /lite/.test(m)), ...usable.filter((m) => !/lite/.test(m))].slice(0, 2);
+}
+
+/**
+ * geminiJson that moves to a lighter model when the chosen one is overloaded
+ * even after retries. Returns the text and the model that answered.
+ */
+export async function geminiJsonResilient(auth: GeminiAuth, model: string, prompt: string, signal?: AbortSignal): Promise<{ text: string; model: string }> {
+  try {
+    return { text: await geminiJson(auth, model, prompt, signal), model };
+  } catch (e) {
+    if (!isBusy(e)) throw e;
+    let last = e;
+    for (const m of await fallbackModels(auth, model)) {
+      try {
+        return { text: await geminiJson(auth, m, prompt, signal), model: m };
+      } catch (e2) {
+        if (!isBusy(e2)) throw e2;
+        last = e2;
+      }
+    }
+    throw last;
+  }
 }
