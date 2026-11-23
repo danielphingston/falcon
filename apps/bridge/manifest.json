@@ -1,0 +1,44 @@
+{
+  "manifest_version": "0.3",
+  "name": "falcon-bridge",
+  "display_name": "Falcon",
+  "version": "0.1.0",
+  "description": "Use Falcon (work tracker for audit and due diligence) from Claude: engagements, work papers, review points, RFI, work plans and readiness. Falcon must be open in your browser.",
+  "long_description": "Relays tool calls to the Falcon app open in your browser on this computer, so Claude can do everything Falcon's in-app assistant can. The bridge stores nothing and runs on this computer only (127.0.0.1). Every change shows in Falcon under Settings → AI connections, with Undo.",
+  "author": { "name": "Falcon" },
+  "license": "MIT",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.mjs"],
+      "env": {
+        "FALCON_PAIRING_CODE": "${user_config.pairing_code}",
+        "FALCON_PORT": "${user_config.port}"
+      }
+    }
+  },
+  "user_config": {
+    "pairing_code": {
+      "type": "string",
+      "title": "Pairing code",
+      "description": "From Falcon: Settings → AI connections → Pairing code.",
+      "sensitive": true,
+      "required": true
+    },
+    "port": {
+      "type": "number",
+      "title": "Port",
+      "description": "Local port for Falcon to connect to. Change only if 47820 is taken, and use the same port in Falcon.",
+      "default": 47820,
+      "min": 1024,
+      "max": 65535
+    }
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": { "node": ">=18.0.0" }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@falcon/bridge",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Local MCP bridge: lets Claude and other MCP clients use Falcon's tools through the open Falcon tab.",
+  "type": "module",
+  "bin": { "falcon-bridge": "server/index.mjs" },
+  "scripts": {
+    "start": "node server/index.mjs",
+    "test": "node --test test/bridge.node-test.mjs",
+    "pack": "node scripts/pack.mjs"
+  },
+  "engines": { "node": ">=18" }
+}

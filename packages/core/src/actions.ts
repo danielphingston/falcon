@@ -138,7 +138,15 @@ export async function remove<T extends TableName>(ctx: Ctx, table: T, id: string
   return { record, before, change };
 }
 
-/** Reverts every change in a batch, newest first. Returns how many were reverted. */
+const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/**
+ * Reverts every change in a batch, newest first. Returns how many were reverted.
+ *
+ * Field by field: only the fields a change touched are put back, and only
+ * where they still hold the value that change set. Edits made since (by the
+ * user, the app or another AI) are kept.
+ */
 export async function undoBatch(store: Store, batchId: string, now: Date = new Date()): Promise<number> {
   const changes = (await store.listChanges())
     .filter((c) => c.batchId === batchId && !c.undone)
@@ -146,10 +154,22 @@ export async function undoBatch(store: Store, batchId: string, now: Date = new D
   return store.transaction(async () => {
     for (const c of changes) {
       const at = now.toISOString();
-      const restored =
-        c.before === null
-          ? { ...c.after, deleted: true, updatedAt: at }
-          : { ...c.before, updatedAt: at };
+      const current = (await store.get(c.table, c.recordId)) as Record<string, unknown> | undefined;
+      let restored: Record<string, unknown>;
+      if (c.before === null) restored = { ...(current ?? c.after), deleted: true, updatedAt: at };
+      else if (!current) restored = { ...c.before, updatedAt: at };
+      else {
+        const before = c.before as Record<string, unknown>;
+        const after = c.after as Record<string, unknown>;
+        restored = { ...current };
+        for (const f of new Set([...Object.keys(before), ...Object.keys(after)])) {
+          if (f === "updatedAt" || f === "updatedBy" || same(before[f], after[f])) continue;
+          if (!same(current[f], after[f])) continue; // changed again since: keep the newer value
+          if (before[f] === undefined) delete restored[f];
+          else restored[f] = before[f];
+        }
+        restored.updatedAt = at;
+      }
       await store.put(c.table, restored as never);
       await store.putChange({ ...c, undone: true });
     }

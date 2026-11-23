@@ -13,7 +13,7 @@ import {
   procedureLibrary,
   programmeView,
   relatedChecks,
-  update,
+  runTool,
   type AreaId,
   type EngagementKind,
   type Industry,
@@ -110,12 +110,9 @@ export async function challengeWithAi(pointId: string, quiet = false): Promise<s
     const settings = await getSettings();
     const qs = parseChallengeReply(await geminiJson(auth, settings.geminiModel, prompt));
     if (!qs.length) return quiet ? null : "The AI didn't return any questions. Try again.";
-    const fresh = (await store.get("reviewPoints", pointId)) as ReviewPoint | undefined;
-    if (!fresh) return null;
-    const kept = (fresh.challenges ?? []).filter((q) => q.source !== "ai" || q.status !== "open");
-    const seen = new Set(kept.map((q) => q.question.toLowerCase()));
-    const challenges = [...kept, ...qs.filter((q) => !seen.has(q.question.toLowerCase())).map((q) => ({ ...q, source: "ai" as const, status: "open" as const }))];
-    await update({ store, by: "app" }, "reviewPoints", pointId, { challenges });
+    // Saved through the shared tool, the same one the chat and MCP use.
+    const r = await runTool({ store, by: "app" }, "add_point_challenges", { pointId, questions: qs.map((q) => ({ question: q.question, why: q.why })) });
+    if (!r.ok) return quiet ? null : (r.error ?? "Couldn't save the questions.");
     scheduleSync();
     return null;
   } catch (e) {

@@ -15,6 +15,7 @@ import { LevelUpOverlay } from "./LevelUp";
 import { SyncBadge } from "./SyncBadge";
 import { ChatLauncher } from "./ChatDrawer";
 import { startAutoSync } from "../lib/sync";
+import { startBridge } from "../lib/bridge";
 import { warmGoogle } from "../lib/google";
 import { Icon, type IconName } from "./Icon";
 import { TLink } from "./TLink";
@@ -28,13 +29,14 @@ const nav: { to: string; label: string; icon: IconName }[] = [
   { to: "/review", label: "Review", icon: "review" },
   { to: "/readiness", label: "Readiness", icon: "check" },
   { to: "/chat", label: "Assistant", icon: "sparkles" },
+  { to: "/connections", label: "AI connections", icon: "send" },
   { to: "/time", label: "Time & focus", icon: "clock" },
   { to: "/reports", label: "Reports", icon: "flag" },
   { to: "/progress", label: "Progress", icon: "flag" },
   { to: "/people", label: "People", icon: "users" },
   { to: "/settings", label: "Settings", icon: "settings" },
 ];
-const moreRoutes = ["/more", "/review", "/readiness", "/chat", "/time", "/reports", "/progress", "/people", "/settings"];
+const moreRoutes = ["/more", "/review", "/readiness", "/chat", "/connections", "/time", "/reports", "/progress", "/people", "/settings"];
 /** Phone tab bar: the first four plus More. */
 const phoneTabs = ["/", "/calendar", "/engagements", "/followups"];
 
@@ -52,6 +54,8 @@ export function Layout() {
   useUpdatePrompt();
   useShortcuts();
   useEffect(() => startAutoSync(), []);
+  // Connects to the local MCP bridge when AI connections are on (device-only setting).
+  useEffect(() => void startBridge(), []);
   // Pre-load sign-in so tapping Connect can open Google's popup immediately (Safari).
   useEffect(() => void warmGoogle(), [settings.googleClientId]);
   useEffect(() => {

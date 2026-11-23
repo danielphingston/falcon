@@ -1,0 +1,70 @@
+name: MCP bridge
+
+# Tests the bridge on every change to it, and publishes a release when a
+# bridge-v<version> tag is pushed (e.g. bridge-v0.1.0). Falcon's AI connections
+# page downloads from the latest release.
+
+on:
+  pull_request:
+    paths: ["apps/bridge/**", "packages/core/src/ai/mcp.ts", ".github/workflows/bridge.yml"]
+  push:
+    branches: [main]
+    paths: ["apps/bridge/**", ".github/workflows/bridge.yml"]
+    tags: ["bridge-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (Node ${{ matrix.node }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [20, 24]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Test
+        working-directory: apps/bridge
+        run: node --test test/bridge.node-test.mjs
+      - name: Package
+        working-directory: apps/bridge
+        run: node scripts/pack.mjs
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/bridge-v')
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Package
+        working-directory: apps/bridge
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/pack.mjs
+      - name: Check the extension unpacks with manifest.json at the root
+        working-directory: apps/bridge/dist
+        run: unzip -l falcon-bridge.mcpb | grep -q " manifest.json$"
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" \
+            apps/bridge/dist/falcon-bridge.mcpb \
+            apps/bridge/dist/falcon-bridge.mjs \
+            apps/bridge/dist/SHA256SUMS.txt \
+            --title "Falcon MCP bridge ${TAG#bridge-v}" \
+            --notes "Install in Claude Desktop: open **falcon-bridge.mcpb** and enter the pairing code from Falcon (Settings → AI connections). Other MCP apps: run **falcon-bridge.mjs** with Node 18+ (see apps/bridge/README.md). Checksums in SHA256SUMS.txt."

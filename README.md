@@ -97,6 +97,10 @@ Tested end to end with a real account on 2026-10-18: sign-in, Drive sync, Calend
 
 When you deploy, add the hosted URL to the OAuth client's **Authorized JavaScript origins**, and set `VITE_GOOGLE_CLIENT_ID` for the build.
 
+## Use Falcon from Claude (MCP bridge)
+
+`apps/bridge` is a small local MCP server that lets Claude Desktop, Claude Code or any MCP app use the same tools as the in-app assistant. It relays calls to the Falcon tab open in the browser, which runs them on its own data, so the bridge holds no data or logic. Claude Desktop installs it as an extension (`.mcpb`) and runs it on its own Node, so there's no unsigned `.exe` for Windows Smart App Control to block. Setup is in the app under **AI connections**; details, security and the release steps are in [apps/bridge/README.md](apps/bridge/README.md). Each session's changes are logged on the device for 7 days with Undo.
+
 ## Installing on devices
 
 - **Windows (Chrome/Edge):** open the site → install icon in the address bar → Install.

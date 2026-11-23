@@ -19,7 +19,7 @@ import {
 import { openEditor } from "../components/Editor";
 import { Icon } from "../components/Icon";
 import { useLookups } from "../components/rows";
-import { EmptyState, Pill, Segmented, type Tone } from "../components/ui";
+import { EmptyState, Pill, Segmented, Sheet, type Tone } from "../components/ui";
 import { act } from "../lib/act";
 import { useSettings, useSnapshot, useToday } from "../lib/hooks";
 import { linkWithAi, type LinkScope } from "../lib/readiness";
@@ -45,6 +45,7 @@ export function ReadinessPage() {
   const [tab, setTab] = useState<Tab>("ready");
   const [view, setView] = useState<"step" | "input">("step");
   const [linking, setLinking] = useState<string | null>(null);
+  const [warnFor, setWarnFor] = useState<LinkScope | null>(null);
 
   const engs = useMemo(() => {
     if (!snap) return [];
@@ -84,17 +85,29 @@ export function ReadinessPage() {
 
   // What Link with AI would send (whole engagement, ignoring the person filter).
   const whole = selected && scope[0] ? engagementReadiness(scope[0], snap.planItems, snap.infoRequests, today) : undefined;
-  const aiUnlinked = whole?.unlinked.length ?? 0;
+  const aiUnlinked = whole?.unlinked.filter((s) => s.source !== "manual").length ?? 0;
   const aiAll = whole?.steps.filter((s) => s.source !== "manual").length ?? 0;
 
+  // The warning shows before every run, unless the user turned it off for "link unlinked" on this device.
+  // "Re-check all" always asks, since it uses much more of the quota.
+  const askAi = (which: LinkScope) => {
+    let skip = false;
+    try {
+      skip = which === "unlinked" && localStorage.getItem(AI_WARN_KEY) === "off";
+    } catch {
+      /* storage blocked: always warn */
+    }
+    if (skip) void runAi(which);
+    else setWarnFor(which);
+  };
+
   const runAi = async (which: LinkScope) => {
-    if (which === "all" && !confirm(`Ask the AI to re-check all ${aiAll} open steps? This uses more of your Gemini quota than linking only the ${aiUnlinked} unlinked ones. Links you set by hand are kept.`)) return;
+    setWarnFor(null);
     setLinking("Starting…");
     const r = await linkWithAi(selected, which, (done, n) => setLinking(`Linking ${done}/${n}…`));
     setLinking(null);
     if (typeof r === "string") return void toast({ message: r, tone: "error" });
     if (r.error) toast({ message: r.linked ? `Linked ${r.linked} steps; ${r.left} left. ${r.error}` : r.error, tone: "error" });
-    else if (r.fallback) toast({ message: `Your usual model was busy, so ${r.fallback} did the linking.` });
   };
 
   // ---------- Export ----------
@@ -170,6 +183,13 @@ export function ReadinessPage() {
   return (
     <div className="space-y-5">
       <Header />
+      <AiWarning
+        which={warnFor}
+        steps={warnFor === "all" ? aiAll : aiUnlinked}
+        model={settings.geminiModel}
+        onCancel={() => setWarnFor(null)}
+        onGo={(which) => void runAi(which)}
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         <select aria-label="Engagement" className="input w-auto max-w-[18rem]" value={selected} onChange={(ev) => (setEngId(ev.target.value), setPerson(""))}>
@@ -193,13 +213,13 @@ export function ReadinessPage() {
         {selected && (
           <div className="ml-auto flex items-center gap-2">
             {!linking && aiAll > aiUnlinked && (
-              <button className="text-xs text-[var(--accent)]" onClick={() => void runAi("all")} title="Ask the AI to check every open step, not only the unlinked ones">
+              <button className="text-xs text-[var(--accent)]" onClick={() => askAi("all")} title="Ask the AI to check every open step, not only the unlinked ones">
                 Re-check all with AI
               </button>
             )}
             <button
               className="btn btn-soft btn-sm"
-              onClick={() => void runAi("unlinked")}
+              onClick={() => askAi("unlinked")}
               disabled={!!linking || !aiUnlinked}
               title={aiUnlinked ? `Sends only the ${aiUnlinked} steps the app couldn't link, to save your Gemini quota` : "Every step is linked"}
             >
@@ -492,6 +512,69 @@ function ByInput({ list, today, multi }: { list: EngagementReadiness[]; today: s
         ) : null,
       )}
     </div>
+  );
+}
+
+const AI_WARN_KEY = "falcon.linkAiWarning";
+
+/** Shown before Link with AI: it can fail or get links wrong, so only use it with a capable model on a paid plan. */
+function AiWarning({ which, steps, model, onCancel, onGo }: { which: LinkScope | null; steps: number; model: string; onCancel: () => void; onGo: (which: LinkScope) => void }) {
+  const [dontAsk, setDontAsk] = useState(false);
+  const go = () => {
+    if (dontAsk && which === "unlinked")
+      try {
+        localStorage.setItem(AI_WARN_KEY, "off");
+      } catch {
+        /* storage blocked: it will just ask again */
+      }
+    if (which) onGo(which);
+  };
+  return (
+    <Sheet
+      open={!!which}
+      onClose={onCancel}
+      title="Before you use Link with AI"
+      footer={
+        <>
+          <button className="btn btn-ghost" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="btn btn-primary" onClick={go}>
+            Link {steps} step{steps === 1 ? "" : "s"} anyway
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-3 text-sm">
+        <p className="rounded-xl bg-amber-50 px-3 py-2 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          <b>Link with AI can fail, and it can get links wrong.</b> Only use it if you have a capable Gemini model (a current Flash or Pro) on a paid plan or with API billing.
+        </p>
+        <ul className="list-disc space-y-1.5 pl-5">
+          <li>
+            <b>It can fail:</b> on free tiers or busy times Google often answers “high demand” or hits a rate limit. The app retries a couple of times on your model, then stops. It never switches to a different model.
+          </li>
+          <li>
+            <b>It can be wrong:</b> lite, older or free models link steps to the wrong RFI items more often. A wrong link can show a step as <b>Ready</b> when its input hasn't actually come in.
+          </li>
+          <li>
+            <b>Without a good model or subscription:</b> link steps by hand instead (tap a step → Inputs needed), or mark them “No input needed”.
+          </li>
+          <li>
+            <b>If you go ahead:</b> check the steps it links (tap a step to see them). One Undo reverses the whole run, and steps you set by hand are never touched.
+          </li>
+        </ul>
+        <p className="muted">
+          Model: <b>{model}</b> (change it in Settings) · sends {steps} step{steps === 1 ? "" : "s"} and this engagement's RFI list to Google.
+          {which === "all" && " Re-checking every step uses noticeably more of your Gemini quota than linking only the unlinked ones."}
+        </p>
+        {which === "unlinked" && (
+          <label className="flex items-center gap-2 muted">
+            <input type="checkbox" checked={dontAsk} onChange={(e) => setDontAsk(e.target.checked)} />
+            Don't show this again on this device
+          </label>
+        )}
+      </div>
+    </Sheet>
   );
 }
 

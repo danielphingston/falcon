@@ -10,7 +10,7 @@
     "dev": "npm run dev -w @falcon/web",
     "build": "npm run build -w @falcon/web",
     "preview": "npm run preview -w @falcon/web",
-    "test": "npm test -w @falcon/core",
+    "test": "npm test -w @falcon/core && npm test -w @falcon/bridge",
     "typecheck": "npm run typecheck -w @falcon/core && npm run typecheck -w @falcon/web"
   }
 }
