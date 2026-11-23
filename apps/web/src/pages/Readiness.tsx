@@ -22,7 +22,7 @@ import { useLookups } from "../components/rows";
 import { EmptyState, Pill, Segmented, type Tone } from "../components/ui";
 import { act } from "../lib/act";
 import { useSettings, useSnapshot, useToday } from "../lib/hooks";
-import { linkWithAi } from "../lib/readiness";
+import { linkWithAi, type LinkScope } from "../lib/readiness";
 import { toast } from "../lib/toast";
 import { downloadXlsx } from "../lib/xlsx";
 
@@ -44,7 +44,7 @@ export function ReadinessPage() {
   const [person, setPerson] = useState("");
   const [tab, setTab] = useState<Tab>("ready");
   const [view, setView] = useState<"step" | "input">("step");
-  const [linking, setLinking] = useState(false);
+  const [linking, setLinking] = useState<string | null>(null);
 
   const engs = useMemo(() => {
     if (!snap) return [];
@@ -82,11 +82,19 @@ export function ReadinessPage() {
   const multi = scope.length > 1;
   const label = selected ? (scope[0]?.name ?? "") : "All engagements";
 
-  const runAi = async () => {
-    setLinking(true);
-    const r = await linkWithAi(selected);
-    setLinking(false);
-    if (typeof r === "string") toast({ message: r, tone: "error" });
+  // What Link with AI would send (whole engagement, ignoring the person filter).
+  const whole = selected && scope[0] ? engagementReadiness(scope[0], snap.planItems, snap.infoRequests, today) : undefined;
+  const aiUnlinked = whole?.unlinked.length ?? 0;
+  const aiAll = whole?.steps.filter((s) => s.source !== "manual").length ?? 0;
+
+  const runAi = async (which: LinkScope) => {
+    if (which === "all" && !confirm(`Ask the AI to re-check all ${aiAll} open steps? This uses more of your Gemini quota than linking only the ${aiUnlinked} unlinked ones. Links you set by hand are kept.`)) return;
+    setLinking("Starting…");
+    const r = await linkWithAi(selected, which, (done, n) => setLinking(`Linking ${done}/${n}…`));
+    setLinking(null);
+    if (typeof r === "string") return void toast({ message: r, tone: "error" });
+    if (r.error) toast({ message: r.linked ? `Linked ${r.linked} steps; ${r.left} left. ${r.error}` : r.error, tone: "error" });
+    else if (r.fallback) toast({ message: `Your usual model was busy, so ${r.fallback} did the linking.` });
   };
 
   // ---------- Export ----------
@@ -183,9 +191,21 @@ export function ReadinessPage() {
           </select>
         )}
         {selected && (
-          <button className="btn btn-soft btn-sm ml-auto" onClick={() => void runAi()} disabled={linking}>
-            <Icon name="sparkles" size={14} /> {linking ? "Linking…" : "Link with AI"}
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            {!linking && aiAll > aiUnlinked && (
+              <button className="text-xs text-[var(--accent)]" onClick={() => void runAi("all")} title="Ask the AI to check every open step, not only the unlinked ones">
+                Re-check all with AI
+              </button>
+            )}
+            <button
+              className="btn btn-soft btn-sm"
+              onClick={() => void runAi("unlinked")}
+              disabled={!!linking || !aiUnlinked}
+              title={aiUnlinked ? `Sends only the ${aiUnlinked} steps the app couldn't link, to save your Gemini quota` : "Every step is linked"}
+            >
+              <Icon name="sparkles" size={14} /> {linking ?? (aiUnlinked ? `Link ${aiUnlinked} with AI` : "All linked")}
+            </button>
+          </div>
         )}
       </div>
 

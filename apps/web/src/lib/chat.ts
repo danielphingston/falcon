@@ -104,6 +104,8 @@ export function friendlyError(e: unknown): string {
   if (e instanceof NeedsAuthError || status === 401) return "Your Google session expired. Tap Reconnect (Settings or the sync chip), then try again.";
   if (/insufficient.*scope|ACCESS_TOKEN_SCOPE_INSUFFICIENT/i.test(msg)) return "Google sign-in lacks Gemini access. Reconnect Google in Settings and allow it.";
   if (/SERVICE_DISABLED|has not been used in project|is disabled/i.test(msg)) return "The Generative Language API isn't enabled in your Google Cloud project. Enable it (see README → AI assistant).";
+  if (status === 503 || /UNAVAILABLE|high demand|overloaded/i.test(msg))
+    return "Google's Gemini servers are busy right now (not a problem on your side). The app already retried; try again in a minute, or pick a lighter model (e.g. a flash-lite one) in Settings.";
   if (status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(msg)) return "Gemini's rate limit or quota was reached. Wait a minute, or check billing in your Google Cloud project.";
   if (status === 403 || /PERMISSION_DENIED|referer|referrer/i.test(msg)) return "Gemini refused the request. Check that the Generative Language API and billing are enabled in your Google Cloud project.";
   if (status === 404 || /not found/i.test(msg)) return "That Gemini model isn't available to your account. Pick another model in Settings.";
