@@ -168,7 +168,7 @@ function missingFrom(toks: string[], docs: { toks: Set<string> }[]): string[] {
 
 // ---------- Readiness ----------
 
-export type Readiness = "ready" | "blocked" | "unlinked";
+export type Readiness = "ready" | "blocked" | "suggested" | "unlinked";
 
 export interface Blocker {
   /** What is missing, e.g. "Fixed asset register". */
@@ -186,21 +186,41 @@ export interface Blocker {
 
 export interface StepReadiness {
   step: PlanItem;
+  /**
+   * ready / blocked: from links the user confirmed (set by hand, or a
+   * suggestion they confirmed). suggested: only an AI or matcher suggestion,
+   * which counts for nothing until confirmed. unlinked: nothing to go on.
+   */
   state: Readiness;
-  /** Inputs the step needs that have come in. */
+  /** For a suggestion: what the step would be once confirmed. */
+  wouldBe?: "ready" | "blocked";
+  /** Inputs the step needs that have come in (for a suggestion: would need). */
   received: { input: string; rfiNumber?: string; rfiId?: string }[];
   blockers: Blocker[];
-  /** Where the links came from. */
+  /** True when the links say no client input is needed. */
+  none?: boolean;
+  /**
+   * Where the links came from: confirmed by the user ("manual"), suggested by
+   * AI ("ai"), suggested by the offline matcher ("auto"), or nothing ("none").
+   */
   source: "manual" | "ai" | "auto" | "none";
+  /** For confirmed links: what suggested them, if anything. */
+  suggestedBy?: "ai" | "matcher";
+  /** The links themselves, so a suggestion can be confirmed as it is. */
+  links: { rfiIds: string[]; extra: { name: string; received: boolean }[]; none?: boolean };
 }
 
 export interface EngagementReadiness {
   engagement: Engagement;
   steps: StepReadiness[];
+  /** Confirmed only. */
   ready: StepReadiness[];
+  /** Confirmed only. */
   blocked: StepReadiness[];
+  /** Suggested by AI or the matcher, waiting for the user to confirm. */
+  suggested: StepReadiness[];
   unlinked: StepReadiness[];
-  /** Missing inputs with the steps each one holds up, most-blocking first. */
+  /** Missing inputs (confirmed links only) with the steps each one holds up, most-blocking first. */
   byInput: { blocker: Blocker; steps: PlanItem[] }[];
 }
 
@@ -208,7 +228,11 @@ const DONE = new Set(["received", "na"]);
 
 /**
  * Readiness of every open, applicable step of one engagement's work plan.
- * `people` resolves RFI contacts to names for the "from" column.
+ *
+ * Only links the user confirmed count towards ready / blocked. A step's links
+ * come from, in order: the user (confirmed), the AI (suggestion), the offline
+ * matcher (suggestion); an AI suggestion replaces the matcher's.
+ * `personName` resolves RFI contacts to names for the "from" column.
  */
 export function engagementReadiness(
   engagement: Engagement,
@@ -228,45 +252,58 @@ export function engagementReadiness(
     const guess = set ? undefined : guessInputs(step, items);
     const rfiIds = (set?.rfiIds ?? guess!.rfiIds).filter((id) => byId.has(id));
     const extra = set?.extra ?? guess!.missing.map((name) => ({ name, received: false }));
-    const source = set ? set.source : rfiIds.length || extra.length ? "auto" : "none";
-    if (set?.none) return { step, state: "ready", received: [], blockers: [], source };
+    const none = !!set?.none;
+    const source: StepReadiness["source"] = set ? set.source : rfiIds.length || extra.length ? "auto" : "none";
     const received: StepReadiness["received"] = [];
     const blockers: Blocker[] = [];
-    for (const id of rfiIds) {
-      const r = byId.get(id)!;
-      if (DONE.has(r.status)) received.push({ input: r.description, rfiNumber: r.number, rfiId: r.id });
-      else
-        blockers.push({
-          input: r.description,
-          rfiNumber: r.number,
-          rfiId: r.id,
-          state: r.status === "partial" ? "partial" : "pending",
-          requestedOn: r.requestedOn,
-          daysWaiting: r.requestedOn ? Math.max(0, daysBetween(r.requestedOn, today)) : undefined,
-          from: (r.requestedFromId && personName(r.requestedFromId)) || r.responsible,
-        });
+    if (!none) {
+      for (const id of rfiIds) {
+        const r = byId.get(id)!;
+        if (DONE.has(r.status)) received.push({ input: r.description, rfiNumber: r.number, rfiId: r.id });
+        else
+          blockers.push({
+            input: r.description,
+            rfiNumber: r.number,
+            rfiId: r.id,
+            state: r.status === "partial" ? "partial" : "pending",
+            requestedOn: r.requestedOn,
+            daysWaiting: r.requestedOn ? Math.max(0, daysBetween(r.requestedOn, today)) : undefined,
+            from: (r.requestedFromId && personName(r.requestedFromId)) || r.responsible,
+          });
+      }
+      for (const x of extra) (x.received ? received.push({ input: x.name }) : blockers.push({ input: x.name, state: "not_requested" }));
     }
-    for (const x of extra) (x.received ? received.push({ input: x.name }) : blockers.push({ input: x.name, state: "not_requested" }));
-    const state: Readiness = blockers.length ? "blocked" : received.length ? "ready" : "unlinked";
-    return { step, state, received, blockers, source };
+    const outcome: "ready" | "blocked" | undefined = none ? "ready" : blockers.length ? "blocked" : received.length ? "ready" : undefined;
+    const base = { step, received, blockers, none: none || undefined, source, suggestedBy: set?.suggestedBy, links: { rfiIds, extra, none: none || undefined } };
+    if (!outcome) return { ...base, state: "unlinked" as const };
+    if (source === "manual") return { ...base, state: outcome };
+    return { ...base, state: "suggested" as const, wouldBe: outcome };
   });
 
   const map = new Map<string, { blocker: Blocker; steps: PlanItem[] }>();
   for (const s of out)
-    for (const b of s.blockers) {
-      const k = b.rfiId ?? `x:${b.input.toLowerCase()}`;
-      const g = map.get(k) ?? { blocker: b, steps: [] };
-      g.steps.push(s.step);
-      map.set(k, g);
-    }
+    if (s.state === "blocked")
+      for (const b of s.blockers) {
+        const k = b.rfiId ?? `x:${b.input.toLowerCase()}`;
+        const g = map.get(k) ?? { blocker: b, steps: [] };
+        g.steps.push(s.step);
+        map.set(k, g);
+      }
   return {
     engagement,
     steps: out,
     ready: out.filter((s) => s.state === "ready"),
     blocked: out.filter((s) => s.state === "blocked"),
+    suggested: out.filter((s) => s.state === "suggested"),
     unlinked: out.filter((s) => s.state === "unlinked"),
     byInput: [...map.values()].sort((a, b) => b.steps.length - a.steps.length || (b.blocker.daysWaiting ?? 0) - (a.blocker.daysWaiting ?? 0)),
   };
+}
+
+/** The confirmed form of a step's links: saved as the user's own, remembering what suggested them. */
+export function confirmedInputs(s: StepReadiness): NonNullable<PlanItem["inputs"]> {
+  const by = s.source === "ai" ? "ai" : s.source === "auto" ? "matcher" : s.suggestedBy;
+  return { rfiIds: s.links.rfiIds, extra: s.links.extra, none: s.links.none, source: "manual", ...(by ? { suggestedBy: by } : {}) };
 }
 
 /** One line on why a step can't be done yet. */
@@ -304,6 +341,10 @@ export function blockerRows(list: EngagementReadiness[]): string[][] {
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+/** " (12 more steps not confirmed yet, not included)" while some links are only suggestions. */
+const pendingNote = (e: EngagementReadiness) =>
+  e.suggested.length ? ` (${e.suggested.length} more step${e.suggested.length === 1 ? "" : "s"} not confirmed yet, not included)` : "";
+
 /** Email-ready table (pastes into Outlook / Gmail as a table). */
 export function blockerHtml(list: EngagementReadiness[]): string {
   const td = 'style="border:1px solid #bbb;padding:4px 8px;font-family:Calibri,Arial,sans-serif;font-size:11pt;vertical-align:top"';
@@ -312,7 +353,7 @@ export function blockerHtml(list: EngagementReadiness[]): string {
   for (const e of list) {
     if (!e.blocked.length) continue;
     parts.push(
-      `<p style="font-family:Calibri,Arial,sans-serif;font-size:11pt"><b>${esc(e.engagement.name)}</b>: ${e.ready.length} step${e.ready.length === 1 ? "" : "s"} can be executed now, ${e.blocked.length} blocked.</p>`,
+      `<p style="font-family:Calibri,Arial,sans-serif;font-size:11pt"><b>${esc(e.engagement.name)}</b>: ${e.ready.length} step${e.ready.length === 1 ? "" : "s"} can be executed now, ${e.blocked.length} blocked${pendingNote(e)}.</p>`,
       `<table style="border-collapse:collapse"><tr>${["Step", "Area", "Work plan step", "Person", "Cannot be done because"].map((h) => `<th ${th}>${h}</th>`).join("")}</tr>` +
         e.blocked
           .map(
@@ -331,7 +372,7 @@ export function blockersPlainText(list: EngagementReadiness[]): string {
   const out: string[] = [];
   for (const e of list) {
     if (!e.blocked.length) continue;
-    out.push(`${e.engagement.name}: ${e.ready.length} steps can be executed now, ${e.blocked.length} blocked.`, "");
+    out.push(`${e.engagement.name}: ${e.ready.length} steps can be executed now, ${e.blocked.length} blocked${pendingNote(e)}.`, "");
     for (const s of e.blocked) {
       out.push(`${s.step.number} ${s.step.area}: ${s.step.text.split("\n")[0]}${s.step.assignee ? ` [${s.step.assignee}]` : ""}`);
       for (const b of s.blockers) out.push(`   - ${blockerText(b)}`);

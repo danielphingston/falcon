@@ -4,6 +4,7 @@ import {
   blockerHtml,
   blockerRows,
   blockersPlainText,
+  confirmedInputs,
   createInfoRequest,
   engagementReadiness,
   liveEngagementIds,
@@ -26,7 +27,17 @@ import { linkWithAi, type LinkScope } from "../lib/readiness";
 import { toast } from "../lib/toast";
 import { downloadXlsx } from "../lib/xlsx";
 
-type Tab = "ready" | "blocked" | "unlinked";
+type Tab = "ready" | "blocked" | "suggested" | "unlinked";
+
+/** Saves suggestions as the user's confirmed links, as one undoable action. */
+const confirmSteps = (steps: StepReadiness[], message?: string) =>
+  steps.length
+    ? act(message ?? `Confirmed ${steps.length} step${steps.length === 1 ? "" : "s"}`, async (ctx) => {
+        const out = [];
+        for (const s of steps) out.push(await update(ctx, "planItems", s.step.id, { inputs: confirmedInputs(s) }));
+        return out;
+      })
+    : undefined;
 
 const stateTone: Record<Blocker["state"], Tone> = { pending: "amber", partial: "blue", not_requested: "red" };
 const stateLabel: Record<Blocker["state"], string> = { pending: "Pending", partial: "Partly received", not_requested: "Not on the RFI" };
@@ -76,9 +87,10 @@ export function ReadinessPage() {
   );
   const ready = list.flatMap((r) => r.ready);
   const blocked = list.flatMap((r) => r.blocked);
+  const suggested = list.flatMap((r) => r.suggested);
   const unlinked = list.flatMap((r) => r.unlinked);
-  const total = ready.length + blocked.length + unlinked.length;
-  const guessed = list.some((r) => r.steps.some((s) => s.source === "auto"));
+  const total = ready.length + blocked.length + suggested.length + unlinked.length;
+  const aiSuggested = suggested.filter((s) => s.source === "ai");
   const noRfi = scope.filter((e) => !snap.infoRequests.some((r) => r.engagementId === e.id && !r.deleted));
   const multi = scope.length > 1;
   const label = selected ? (scope[0]?.name ?? "") : "All engagements";
@@ -126,6 +138,12 @@ export function ReadinessPage() {
       ]),
     );
     downloadXlsx(fileBase, [
+      {
+        name: "Summary",
+        head: ["Engagement", "Ready to execute", "Blocked", "Not confirmed yet (not in this file)", "Not linked", "As at"],
+        rows: list.map((r) => [r.engagement.name, r.ready.length, r.blocked.length, r.suggested.length, r.unlinked.length, today]),
+        widths: [28, 16, 10, 34, 12, 12],
+      },
       { name: "Blockers", head: BLOCKER_HEAD, rows: blockerRows(list).map((r) => r.map((c, i) => (i === 8 && c ? Number(c) : c))) },
       { name: "By missing input", head: ["Engagement", "Missing input", "RFI no.", "Status", "Days waiting", "With (client)", "Steps held up", "Steps"], rows: byInput, widths: [22, 50, 9, 15, 13, 18, 13, 70] },
       {
@@ -236,19 +254,22 @@ export function ReadinessPage() {
       )}
 
       <div className="card space-y-3 p-4">
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Tile n={ready.length} label="Ready to execute" tone="text-emerald-600 dark:text-emerald-400" on={tab === "ready"} onClick={() => setTab("ready")} />
           <Tile n={blocked.length} label="Blocked" tone="text-rose-600 dark:text-rose-400" on={tab === "blocked"} onClick={() => setTab("blocked")} />
+          <Tile n={suggested.length} label="To confirm" tone="text-amber-600 dark:text-amber-400" on={tab === "suggested"} onClick={() => setTab("suggested")} />
           <Tile n={unlinked.length} label="Not linked yet" tone="muted" on={tab === "unlinked"} onClick={() => setTab("unlinked")} />
         </div>
         {total > 0 && (
           <div className="flex h-2 overflow-hidden rounded-full bg-[var(--surface-2)]">
             <div className="bg-emerald-500" style={{ width: `${(ready.length / total) * 100}%` }} />
             <div className="bg-rose-500" style={{ width: `${(blocked.length / total) * 100}%` }} />
+            <div className="bg-amber-300 dark:bg-amber-700" style={{ width: `${(suggested.length / total) * 100}%` }} />
           </div>
         )}
         <p className="text-xs muted">
-          Open steps only ({total}). {guessed ? "Inputs are matched to the RFI from the wording; tap a step to check or change what it needs, or use Link with AI." : "Tap a step to change the inputs it needs."}
+          Open steps only ({total}). Ready and Blocked count only links you've confirmed.
+          {suggested.length > 0 && ` ${suggested.length} step${suggested.length === 1 ? " has" : "s have"} suggested links (from AI or the offline matcher) to check under To confirm.`}
         </p>
       </div>
 
@@ -260,6 +281,7 @@ export function ReadinessPage() {
           options={[
             { value: "ready", label: `Ready ${ready.length}` },
             { value: "blocked", label: `Blockers ${blocked.length}` },
+            { value: "suggested", label: `To confirm ${suggested.length}` },
             { value: "unlinked", label: `Not linked ${unlinked.length}` },
           ]}
         />
@@ -286,7 +308,11 @@ export function ReadinessPage() {
         (ready.length ? (
           <Grouped list={list} pick={(r) => r.ready} multi={multi} render={(s) => <ReadyRow s={s} />} />
         ) : (
-          <EmptyState icon="check" title="Nothing ready yet" hint={blocked.length ? "Every linked step is still waiting on the client. See Blockers." : undefined} />
+          <EmptyState
+            icon="check"
+            title="Nothing ready yet"
+            hint={suggested.length ? "Confirm the suggested links under To confirm and ready steps show here." : blocked.length ? "Every confirmed step is still waiting on the client. See Blockers." : undefined}
+          />
         ))}
       {tab === "blocked" &&
         (blocked.length ? (
@@ -296,7 +322,13 @@ export function ReadinessPage() {
             <ByInput list={list} today={today} multi={multi} />
           )
         ) : (
-          <EmptyState icon="check" title="No blockers" hint="Every linked step has its inputs." />
+          <EmptyState icon="check" title="No blockers" hint={suggested.length ? "None among confirmed steps. Suggested links under To confirm aren't counted yet." : "Every confirmed step has its inputs."} />
+        ))}
+      {tab === "suggested" &&
+        (suggested.length ? (
+          <ToConfirm list={list} multi={multi} suggested={suggested} aiSuggested={aiSuggested} />
+        ) : (
+          <EmptyState icon="check" title="Nothing to confirm" hint="Suggested links from the AI or the offline matcher show here for you to check." />
         ))}
       {tab === "unlinked" &&
         (unlinked.length ? (
@@ -330,7 +362,20 @@ function Tile({ n, label, tone, on, onClick }: { n: number; label: string; tone:
 }
 
 /** Steps grouped by engagement (when several) and area. */
-function Grouped({ list, pick, multi, render }: { list: EngagementReadiness[]; pick: (r: EngagementReadiness) => StepReadiness[]; multi: boolean; render: (s: StepReadiness) => React.ReactNode }) {
+function Grouped({
+  list,
+  pick,
+  multi,
+  render,
+  areaAction,
+}: {
+  list: EngagementReadiness[];
+  pick: (r: EngagementReadiness) => StepReadiness[];
+  multi: boolean;
+  render: (s: StepReadiness) => React.ReactNode;
+  /** Optional button beside each area heading, e.g. "Confirm all 4". */
+  areaAction?: (rows: StepReadiness[]) => React.ReactNode;
+}) {
   return (
     <div className="space-y-4">
       {list.map((r) => {
@@ -348,13 +393,141 @@ function Grouped({ list, pick, multi, render }: { list: EngagementReadiness[]; p
             {multi && <p className="px-1 pt-1 text-xs font-semibold uppercase tracking-wide text-[var(--accent)]">{r.engagement.name}</p>}
             {areas.map(([area, rows]) => (
               <section key={area} className="space-y-1.5">
-                <h3 className="px-1 text-sm font-semibold">{area || "Other steps"}</h3>
+                <div className="flex items-center justify-between gap-2 px-1">
+                  <h3 className="text-sm font-semibold">{area || "Other steps"}</h3>
+                  {areaAction?.(rows)}
+                </div>
                 <div className="card divide-y divide-[var(--border)]">{rows.map((s) => <div key={s.step.id}>{render(s)}</div>)}</div>
               </section>
             ))}
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Suggested links waiting for the user: confirm one step, a whole area, every
+ * AI suggestion, or the ticked ones. Confirming saves them as the user's own,
+ * and only then do they count as ready or blocked.
+ */
+function ToConfirm({ list, multi, suggested, aiSuggested }: { list: EngagementReadiness[]; multi: boolean; suggested: StepReadiness[]; aiSuggested: StepReadiness[] }) {
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const byId = new Map(suggested.map((s) => [s.step.id, s]));
+  const chosen = [...picked].map((id) => byId.get(id)).filter((s): s is StepReadiness => !!s);
+  const toggle = (id: string) =>
+    setPicked((p) => {
+      const n = new Set(p);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  const done = () => setPicked(new Set());
+  const allPicked = chosen.length === suggested.length;
+  return (
+    <div className="space-y-3">
+      <p className="px-1 text-sm muted">
+        Check what each step needs, then confirm. Suggestions don't count as ready or blocked until you do. <span className="font-medium">✦ AI</span> suggestions come from Link with AI or an AI app;{" "}
+        <span className="font-medium">≈ Matcher</span> ones from Falcon's offline matching.
+      </p>
+      <div className="sticky top-0 z-10 -mx-1 flex flex-wrap items-center gap-2 rounded-xl bg-[var(--bg)]/90 px-1 py-2 backdrop-blur">
+        <label className="flex items-center gap-1.5 text-sm">
+          <input type="checkbox" checked={allPicked && suggested.length > 0} onChange={() => setPicked(allPicked ? new Set() : new Set(suggested.map((s) => s.step.id)))} aria-label="Select all" />
+          {chosen.length ? `${chosen.length} selected` : "Select"}
+        </label>
+        {chosen.length > 0 && (
+          <button className="btn btn-primary btn-sm" onClick={() => void confirmSteps(chosen)?.then(done)}>
+            <Icon name="check" size={14} /> Confirm selected ({chosen.length})
+          </button>
+        )}
+        {aiSuggested.length > 0 && (
+          <button
+            className="btn btn-soft btn-sm ml-auto"
+            onClick={() => {
+              if (confirm(`Confirm all ${aiSuggested.length} AI suggestions without checking each one? They'll count as ready or blocked straight away. One Undo reverses this.`))
+                void confirmSteps(aiSuggested, `Confirmed ${aiSuggested.length} AI suggestion${aiSuggested.length === 1 ? "" : "s"}`)?.then(done);
+            }}
+          >
+            ✦ Confirm all AI suggestions ({aiSuggested.length})
+          </button>
+        )}
+      </div>
+      <Grouped
+        list={list}
+        pick={(r) => r.suggested}
+        multi={multi}
+        areaAction={(rows) => (
+          <button className="text-xs font-medium text-[var(--accent)]" onClick={() => void confirmSteps(rows)}>
+            Confirm all {rows.length}
+          </button>
+        )}
+        render={(s) => <SuggestedRow s={s} picked={picked.has(s.step.id)} onPick={() => toggle(s.step.id)} />}
+      />
+    </div>
+  );
+}
+
+function SuggestedRow({ s, picked, onPick }: { s: StepReadiness; picked: boolean; onPick: () => void }) {
+  const noInput = () => act("Marked as needing no client input", (ctx) => update(ctx, "planItems", s.step.id, { inputs: { rfiIds: [], extra: [], none: true, source: "manual" } }));
+  return (
+    <div className={`flex items-start gap-3 px-3 py-2.5 ${picked ? "bg-[var(--surface-2)]" : ""}`}>
+      <input type="checkbox" className="mt-1.5 shrink-0" checked={picked} onChange={onPick} aria-label={`Select step ${s.step.number}`} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <StepText step={s.step} />
+          <span
+            className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${s.source === "ai" ? "bg-brand-100 text-brand-700 dark:bg-indigo-950 dark:text-indigo-300" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}
+            title={s.source === "ai" ? "Suggested by AI" : "Suggested by Falcon's offline matcher"}
+          >
+            {s.source === "ai" ? "✦ AI" : "≈ Matcher"}
+          </span>
+        </div>
+        <ul className="mt-1 space-y-0.5 text-xs">
+          {s.none && <li className="muted">Needs no client input</li>}
+          {s.received.map((x, i) => (
+            <li key={`r${i}`} className="flex items-start gap-1.5">
+              <span className="text-emerald-600 dark:text-emerald-400">●</span>
+              <span className="min-w-0">
+                {x.rfiNumber && <span className="font-mono muted">RFI {x.rfiNumber} </span>}
+                {short(x.input, 90)} <span className="muted">· received</span>
+              </span>
+            </li>
+          ))}
+          {s.blockers.map((b, i) => (
+            <li key={`b${i}`} className="flex items-start gap-1.5">
+              <span className={b.state === "not_requested" ? "text-rose-600 dark:text-rose-400" : "text-amber-500"}>{b.state === "not_requested" ? "▲" : "○"}</span>
+              <span className="min-w-0">
+                {b.rfiNumber && <span className="font-mono muted">RFI {b.rfiNumber} </span>}
+                {b.state === "not_requested" ? (
+                  <>Not on the RFI: {b.input}</>
+                ) : (
+                  <>
+                    {short(b.input, 90)}
+                    <span className="muted"> · {stateLabel[b.state].toLowerCase()}</span>
+                  </>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <span className="text-xs muted">
+            Would be: <b className={s.wouldBe === "ready" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{s.wouldBe === "ready" ? "Ready" : "Blocked"}</b>
+          </span>
+          <span className="ml-auto flex gap-1">
+            <button className="btn btn-primary btn-sm" onClick={() => void confirmSteps([s])}>
+              Confirm
+            </button>
+            <button className="btn btn-soft btn-sm" onClick={() => openEditor({ table: "planItems", id: s.step.id })}>
+              Edit
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => void noInput()}>
+              No input
+            </button>
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

@@ -743,7 +743,7 @@ export const tools = [
     name: "get_readiness",
     kind: "read",
     description:
-      "Which open work plan steps can be executed now with the inputs received on the RFI, which are blocked (and by which missing RFI items or inputs not on the RFI), and which aren't linked to any input. Optionally for one person. Use for 'what can we do now', 'what's blocked and why', 'what is holding up Asha'.",
+      "Which open work plan steps can be executed now with the inputs received on the RFI, which are blocked (and by which missing RFI items or inputs not on the RFI), which only have suggested links the user hasn't confirmed yet, and which aren't linked to any input. Only confirmed links count as ready or blocked. Optionally for one person. Use for 'what can we do now', 'what's blocked and why', 'what is holding up Asha'.",
     input: z.object({
       engagement: z.string(),
       person: z.string().optional().describe("Only steps this person is responsible for"),
@@ -766,10 +766,17 @@ export const tools = [
       const line = (s: (typeof r.steps)[number]) => ({ id: s.step.id, number: s.step.number, area: s.step.area, text: s.step.text.split("\n")[0], assignee: s.step.assignee });
       return {
         engagement: e.name,
-        counts: { ready: r.ready.length, blocked: r.blocked.length, notLinked: r.unlinked.length },
-        ready: r.ready.map((s) => ({ ...line(s), inputs: s.received.map((x) => (x.rfiNumber ? `RFI ${x.rfiNumber} ` : "") + x.input) })),
+        note: "ready and blocked use only links the user confirmed. toConfirm are suggestions (by AI or the offline matcher) the user hasn't checked yet: never report them as ready or blocked; mention they still need confirming in Falcon (Readiness → To confirm).",
+        counts: { ready: r.ready.length, blocked: r.blocked.length, toConfirm: r.suggested.length, notLinked: r.unlinked.length },
+        ready: r.ready.map((s) => ({ ...line(s), inputs: s.none ? ["no client input needed"] : s.received.map((x) => (x.rfiNumber ? `RFI ${x.rfiNumber} ` : "") + x.input) })),
         blocked: r.blocked.map((s) => ({ ...line(s), because: s.blockers.map(blockerText) })),
         holdingUp: r.byInput.slice(0, 20).map((g) => ({ input: blockerText(g.blocker), steps: g.steps.map((s) => s.number) })),
+        toConfirm: r.suggested.map((s) => ({
+          ...line(s),
+          suggestedBy: s.source === "ai" ? "AI" : "offline matcher",
+          wouldBe: s.wouldBe,
+          inputs: s.none ? ["no client input needed"] : [...s.received.map((x) => (x.rfiNumber ? `RFI ${x.rfiNumber} ` : "") + x.input + " (received)"), ...s.blockers.map(blockerText)],
+        })),
         notLinked: r.unlinked.map(line),
         rfi,
       };
@@ -780,7 +787,7 @@ export const tools = [
     name: "set_step_inputs",
     kind: "write",
     description:
-      "Record which client inputs work plan steps need, for the Readiness page: RFI item numbers, inputs that aren't on the RFI (e.g. 'GSTR-2B for the period'), or that a step needs no client input. Several steps per call. Steps whose inputs the user set by hand are skipped. Get step ids and RFI numbers from get_readiness with includeRfi.",
+      "Suggest which client inputs work plan steps need, for the Readiness page: RFI item numbers, inputs that aren't on the RFI (e.g. 'GSTR-2B for the period'), or that a step needs no client input. Several steps per call. These are suggestions: they show under To confirm and don't count until the user confirms them in Falcon (only the user can confirm). Steps the user already confirmed or set by hand are skipped. Get step ids and RFI numbers from get_readiness with includeRfi.",
     input: z.object({
       engagement: z.string(),
       steps: z
@@ -813,7 +820,7 @@ export const tools = [
           continue;
         }
         if (item.inputs?.source === "manual") {
-          skipped.push({ step: item.number, why: "inputs were set by hand; left as they are" });
+          skipped.push({ step: item.number, why: "the user confirmed or set these inputs; left as they are" });
           continue;
         }
         const ids = (s.rfi ?? []).map(rfiId);
