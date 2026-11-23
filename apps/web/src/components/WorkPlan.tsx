@@ -6,6 +6,7 @@ import {
   labels,
   matchName,
   parsePlan,
+  planAwaitingReview,
   planPlanImport,
   planProgress,
   update,
@@ -44,7 +45,7 @@ export function WorkPlanTab({ snap, engagementId }: { snap: Snapshot; engagement
   const pr = useMemo(() => planProgress(items), [items]);
 
   const mine = (i: PlanItem) => isMe(i.assignee, settings.myName) || isMe(i.reviewer, settings.myName);
-  const toReview = (i: PlanItem) => i.applicable && (hasReview ? (i.status === "closed" || i.status === "review") && i.reviewStatus !== "closed" : i.status === "review");
+  const toReview = (i: PlanItem) => planAwaitingReview(i, hasReview);
   const done = (i: PlanItem) => i.status === "closed" && (!hasReview || i.reviewStatus === "closed");
   const visible = items.filter(
     (i) =>
@@ -182,7 +183,7 @@ function Steps({ items, hasReview }: { items: PlanItem[]; hasReview: boolean }) 
   );
 }
 
-function StepRow({ item, hasReview }: { item: PlanItem; hasReview: boolean }) {
+export function StepRow({ item, hasReview, context }: { item: PlanItem; hasReview: boolean; context?: string }) {
   const cycle = <T extends string>(list: T[], cur: T) => list[(list.indexOf(cur) + 1) % list.length];
   const setExec = () => act(null, (ctx) => update(ctx, "planItems", item.id, { status: cycle(EXEC, item.status) }));
   const setReview = () => act(null, (ctx) => update(ctx, "planItems", item.id, { reviewStatus: cycle(REVIEW, item.reviewStatus ?? "open") }));
@@ -200,6 +201,7 @@ function StepRow({ item, hasReview }: { item: PlanItem; hasReview: boolean }) {
         </p>
         {rest.length > 0 && <p className="whitespace-pre-line text-xs muted">{rest.join("\n")}</p>}
         <p className="mt-0.5 flex flex-wrap gap-x-2 text-xs muted">
+          {context && <span>{context}</span>}
           {item.assignee && <span>{item.assignee}</span>}
           {item.reviewer && <span>review: {item.reviewer}</span>}
           {(item.budgetHours || item.actualHours) && (

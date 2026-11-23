@@ -95,7 +95,18 @@ export function rfiDate(v: unknown): string | undefined {
 }
 
 /** The sheet's status words → app status. "To be received" is still pending. */
-export function rfiStatus(v: unknown): { status?: InfoRequest["status"]; notAvailable?: boolean } {
+/** The item's criticality / priority from the RFI sheet, tidied ("high" → "High"). */
+export function rfiCriticality(item: { fields?: { label: string; value: string }[] }): string | undefined {
+  const v = item.fields?.find((f) => /critical|priority/i.test(f.label))?.value?.trim();
+  return v ? v[0].toUpperCase() + v.slice(1).toLowerCase() : undefined;
+}
+
+/** Sort rank for criticality chips: High, Medium, Low, then anything else. */
+export function criticalityRank(c: string): number {
+  return /critical/i.test(c) ? 0 : /high/i.test(c) ? 1 : /medium|moderate/i.test(c) ? 2 : /low/i.test(c) ? 3 : 4;
+}
+
+export function rfiStatus(v: unknown):{ status?: InfoRequest["status"]; notAvailable?: boolean } {
   const s = norm(v);
   if (!s) return {};
   if (/not\s*available|unavailable/.test(s)) return { status: "na", notAvailable: true };
