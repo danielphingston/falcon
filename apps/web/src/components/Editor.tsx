@@ -83,6 +83,7 @@ const nouns: Record<TableName, string> = {
   achievements: "badge",
   trialBalances: "trial balance",
   programItems: "programme step",
+  planItems: "work plan step",
 };
 
 function recordToValues(table: TableName, r: Record<string, unknown> | null | undefined): FormValues {
@@ -186,6 +187,7 @@ function Extras({ table, record }: { table: TableName; record: AnyEntity }) {
       {table === "workpapers" && <ReviewChecklist wp={record as EntityMap["workpapers"]} />}
       {table === "workpapers" && <ReviewPointsPanel wp={record as EntityMap["workpapers"]} />}
       {table === "infoRequests" && <RfiDetails item={record as EntityMap["infoRequests"]} />}
+      {table === "planItems" && <PlanDetails item={record as EntityMap["planItems"]} />}
       {(table === "infoRequests" || table === "followUps") && (
         <ChasePanel table={table} record={record as EntityMap["infoRequests"] | EntityMap["followUps"]} />
       )}
@@ -206,6 +208,39 @@ function Extras({ table, record }: { table: TableName; record: AnyEntity }) {
           <Icon name="bell" size={16} /> Remind me
         </button>
       )}
+    </div>
+  );
+}
+
+/** Where a work plan step sits and everything else the plan said about it. */
+function PlanDetails({ item }: { item: EntityMap["planItems"] }) {
+  const rows: { label: string; value: string; link?: string }[] = [
+    ...(item.phase ? [{ label: "Phase", value: item.phase }] : []),
+    ...(item.group ? [{ label: "Group", value: item.group }] : []),
+    ...(item.lead ? [{ label: "Under", value: item.lead }] : []),
+    ...(!item.applicable ? [{ label: "Applicability", value: "Not applicable" }] : []),
+    ...(item.fields ?? []),
+  ];
+  if (!rows.length) return null;
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold">From the work plan</h3>
+      <dl className="divide-y divide-[var(--border)] rounded-xl border border-[var(--border)] text-sm">
+        {rows.map((f, i) => (
+          <div key={i} className="flex gap-3 px-3 py-2">
+            <dt className="w-36 shrink-0 muted">{f.label}</dt>
+            <dd className="min-w-0 whitespace-pre-line break-words">
+              {f.link ? (
+                <a className="text-[var(--accent)] underline" href={f.link} target="_blank" rel="noopener noreferrer">
+                  {f.value === f.link ? "Open link" : f.value} ↗
+                </a>
+              ) : (
+                f.value
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }

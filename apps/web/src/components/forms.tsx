@@ -16,7 +16,7 @@ import {
 } from "@falcon/core";
 import { useTable } from "../lib/hooks";
 
-export type FieldType = "text" | "textarea" | "date" | "time" | "minutes" | "datetime" | "select" | "person" | "people" | "engagement" | "workstream" | "workpaper" | "toggles" | "hours" | "task";
+export type FieldType = "text" | "textarea" | "date" | "time" | "minutes" | "datetime" | "select" | "person" | "people" | "engagement" | "workstream" | "workpaper" | "toggles" | "hours" | "task" | "number";
 
 export interface FieldDef {
   name: string;
@@ -138,6 +138,19 @@ export const formDefs: Record<TableName, FieldDef[]> = {
   days: [],
   achievements: [],
   trialBalances: [],
+  planItems: [
+    { name: "text", label: "Procedure", type: "textarea", required: true },
+    { name: "area", label: "Area", type: "text", half: true },
+    { name: "number", label: "No.", type: "text", half: true },
+    { name: "assignee", label: "Person responsible", type: "text", half: true },
+    { name: "status", label: "Execution", type: "select", options: [{ value: "open", label: "Open" }, { value: "wip", label: "WIP" }, { value: "review", label: "Review pending" }, { value: "closed", label: "Closed" }], half: true },
+    { name: "reviewer", label: "Reviewed by", type: "text", half: true },
+    { name: "reviewStatus", label: "Review", type: "select", options: [{ value: "open", label: "Open" }, { value: "wip", label: "WIP" }, { value: "closed", label: "Closed" }], half: true },
+    { name: "budgetHours", label: "Budget hours", type: "number", half: true },
+    { name: "actualHours", label: "Actual hours", type: "number", half: true },
+    { name: "risk", label: "Risk", type: "text", half: true },
+    { name: "notes", label: "Our notes", type: "textarea" },
+  ],
   programItems: [
     { name: "text", label: "Procedure", type: "textarea", required: true },
     { name: "status", label: "Status", type: "select", options: [{ value: "todo", label: "To do" }, { value: "in_progress", label: "In progress" }, { value: "done", label: "Done" }, { value: "na", label: "Not applicable" }], half: true },
@@ -239,6 +252,8 @@ export function RecordForm({
       }
       case "hours":
         return <input {...common} type="number" min={0.05} max={24} step={0.05} inputMode="decimal" value={v} placeholder="1.5" onChange={(e) => set(f.name, e.target.value)} />;
+      case "number":
+        return <input {...common} type="number" min={0} step={0.25} inputMode="decimal" value={v} placeholder={f.placeholder} onChange={(e) => set(f.name, e.target.value)} />;
       case "task":
         return (
           <select {...common} value={v} onChange={(e) => set(f.name, e.target.value)}>
@@ -384,6 +399,8 @@ export function valuesToPatch(fields: FieldDef[], values: FormValues, mode: "cre
         ? new Date(raw as string).toISOString()
         : f.type === "hours"
           ? Math.max(1, Math.round(Number(raw) * 60))
+          : f.type === "number"
+            ? Math.max(0, Number(raw))
           : f.type === "minutes"
             ? Math.min(1440, Math.max(5, Math.round(Number(raw))))
             : f.type === "time"

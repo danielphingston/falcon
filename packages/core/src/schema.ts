@@ -50,6 +50,21 @@ export const engagementFields = z.object({
   notes: z.string().optional(),
   /** Set automatically when the engagement is closed. */
   closedAt: isoDateTime.optional(),
+  /** The last work plan imported: title, columns, other sheets as reference tables. */
+  planInfo: z
+    .object({
+      file: z.string(),
+      sheet: z.string(),
+      title: z.array(z.string()).default([]),
+      columns: z.array(z.string()).default([]),
+      notes: z.array(z.string()).default([]),
+      /** Other sheets (summary, risks and instructions…) kept as plain rows. */
+      tables: z.array(z.object({ name: z.string(), rows: z.array(z.array(z.string())) })).default([]),
+      /** The plan has a separate review status column. */
+      hasReview: z.boolean().default(false),
+      importedAt: isoDateTime,
+    })
+    .optional(),
   /** The last RFI imported: its title block, notes to the client, section notes and columns (annexures excluded). */
   rfiInfo: z
     .object({
@@ -230,6 +245,42 @@ export const trialBalanceFields = z.object({
   performance: z.number().min(0).optional(),
 });
 
+// ---------- Work plans (imported audit programme / IA plan) ----------
+export const planStatuses = ["open", "wip", "review", "closed"] as const;
+export const planReviewStatuses = ["open", "wip", "closed"] as const;
+export const planItemFields = z.object({
+  engagementId: z.string(),
+  /** Sheet's own number for the area ("6"), shown with the step's position. */
+  number: z.string().default(""),
+  /** Phase, e.g. "Planning", "Fieldwork", "Finalisation of Draft". */
+  phase: z.string().optional(),
+  /** Top-level group row, e.g. "Balance Sheet", "Statement of Profit & Loss". */
+  group: z.string().optional(),
+  area: z.string().default(""),
+  /** Lead-in the step sits under, e.g. "ROC Filings made during the year". */
+  lead: z.string().optional(),
+  text: z.string().trim().min(1),
+  risk: z.string().optional(),
+  /** False when the sheet says the step isn't applicable. */
+  applicable: z.boolean().default(true),
+  assignee: z.string().optional(),
+  assigneeId: z.string().optional(),
+  status: z.enum(planStatuses).default("open"),
+  reviewStatus: z.enum(planReviewStatuses).optional(),
+  reviewer: z.string().optional(),
+  reviewerId: z.string().optional(),
+  budgetHours: z.number().nonnegative().optional(),
+  actualHours: z.number().nonnegative().optional(),
+  notes: z.string().optional(),
+  /** Every other column, with the sheet's headers (remarks, sign-offs…). */
+  fields: z.array(z.object({ label: z.string(), value: z.string(), link: z.string().optional() })).optional(),
+  order: z.number().default(0),
+  closedAt: isoDateTime.optional(),
+  /** What the sheet said at the last import, so a re-import only changes statuses the sheet changed. */
+  sheetStatus: z.enum(planStatuses).optional(),
+  sheetReviewStatus: z.enum(planReviewStatuses).optional(),
+});
+
 export const programItemStatuses = ["todo", "in_progress", "done", "na"] as const;
 export const reviewOutcomes = ["none", "ok", "flagged", "na"] as const;
 /** One line of an engagement's work programme. */
@@ -296,6 +347,7 @@ export const fieldSchemas = {
   achievements: achievementFields,
   trialBalances: trialBalanceFields,
   programItems: programItemFields,
+  planItems: planItemFields,
 } as const;
 
 export type TableName = keyof typeof fieldSchemas;
@@ -316,6 +368,7 @@ export const entitySchemas = {
   achievements: achievementFields.extend(base),
   trialBalances: trialBalanceFields.extend(base),
   programItems: programItemFields.extend(base),
+  planItems: planItemFields.extend(base),
 } as const;
 
 export type EntityMap = { [K in TableName]: z.output<(typeof entitySchemas)[K]> };
@@ -338,6 +391,7 @@ export type Achievement = EntityMap["achievements"];
 export type TrialBalance = EntityMap["trialBalances"];
 export type TbLine = TrialBalance["lines"][number];
 export type ProgramItem = EntityMap["programItems"];
+export type PlanItem = EntityMap["planItems"];
 
 /** Tables holding the user's work (excludes system-written gamification state). */
 export const workTables = [
@@ -351,6 +405,7 @@ export const workTables = [
   "followUps",
   "timeEntries",
   "programItems",
+  "planItems",
 ] as const satisfies readonly TableName[];
 
 /** One entry per record change; powers Undo (and later, points). */
@@ -434,6 +489,8 @@ export const labels = {
   taskStatus: { todo: "To do", in_progress: "In progress", done: "Done" },
   reviewPointStatus: { open: "Open", addressed: "Addressed", cleared: "Cleared" },
   engagementStatus: { active: "Active", on_hold: "On hold", closed: "Closed" },
+  planStatus: { open: "Open", wip: "WIP", review: "Review pending", closed: "Closed" },
+  planReviewStatus: { open: "Open", wip: "WIP", closed: "Closed" },
   personRole: { client: "Client", manager: "Manager", partner: "Partner", team: "Team", other: "Other" },
   followUpType: { client: "Client", manager: "Manager", team: "Team", other: "Other" },
 } as const;
