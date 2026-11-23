@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   blockerRows,
   blockersPlainText,
+  confirmedInputs,
   engagementReadiness,
   guessInputs,
   inputTokens,
@@ -53,8 +54,31 @@ describe("readiness", () => {
     expect(guessInputs(plan[3], items)).toEqual({ rfiIds: [], missing: [] });
   });
 
-  it("sorts open steps into ready, blocked and not linked, with reasons", () => {
+  it("treats the matcher's links as suggestions: nothing counts until confirmed", () => {
     const r = engagementReadiness(eng, plan, items, "2026-11-23");
+    // s5 was set by hand ("no client input"): confirmed, so it counts.
+    expect(r.ready.map((s) => s.step.id)).toEqual(["s5"]);
+    expect(r.blocked).toEqual([]);
+    expect(r.byInput).toEqual([]);
+    expect(r.suggested.map((s) => [s.step.id, s.source, s.wouldBe])).toEqual([
+      ["s1", "auto", "blocked"],
+      ["s2", "auto", "ready"],
+      ["s3", "auto", "blocked"],
+    ]);
+    expect(r.unlinked.map((s) => s.step.id)).toEqual(["s4"]);
+    expect(blockerRows([r])).toEqual([]);
+  });
+
+  it("sorts confirmed steps into ready and blocked, with reasons", () => {
+    const first = engagementReadiness(eng, plan, items, "2026-11-23");
+    // Confirm every suggestion as it is.
+    const confirmed = plan.map((p) => {
+      const s = first.suggested.find((x) => x.step.id === p.id);
+      return s ? { ...p, inputs: confirmedInputs(s) } : p;
+    });
+    expect(confirmed[0].inputs).toMatchObject({ source: "manual", suggestedBy: "matcher" });
+    const r = engagementReadiness(eng, confirmed, items, "2026-11-23");
+    expect(r.suggested).toEqual([]);
     expect(r.ready.map((s) => s.step.id)).toEqual(["s2", "s5"]);
     expect(r.blocked.map((s) => s.step.id)).toEqual(["s1", "s3"]);
     expect(r.unlinked.map((s) => s.step.id)).toEqual(["s4"]);
@@ -76,10 +100,23 @@ describe("readiness", () => {
     expect(text).toContain("RFI 1.2 Fixed assets register with depreciation workings: not received, 22d since requested (with Ravi)");
   });
 
-  it("uses links set by hand or by the AI instead of the guess", () => {
-    const set = [{ ...plan[3], inputs: { rfiIds: ["r1"], extra: [{ name: "HR policy", received: true }], source: "ai" as const } }];
-    const r = engagementReadiness(eng, set, items, "2026-11-23");
-    expect(r.ready[0]).toMatchObject({ source: "ai", received: [{ rfiNumber: "1.1" }, { input: "HR policy" }] });
+  it("an AI suggestion replaces the matcher's, but still needs confirming", () => {
+    // s2's matcher suggestion is RFI 1.3 (BRS); the AI suggests RFI 1.1 plus an input not on the RFI.
+    const ai = [{ ...plan[1], inputs: { rfiIds: ["r1"], extra: [{ name: "Bank statements", received: false }], source: "ai" as const } }];
+    const r = engagementReadiness(eng, ai, items, "2026-11-23");
+    expect(r.ready).toEqual([]);
+    expect(r.blocked).toEqual([]);
+    expect(r.suggested[0]).toMatchObject({ source: "ai", wouldBe: "blocked", received: [{ rfiNumber: "1.1" }], blockers: [{ input: "Bank statements", state: "not_requested" }] });
+    expect(confirmedInputs(r.suggested[0])).toEqual({ rfiIds: ["r1"], extra: [{ name: "Bank statements", received: false }], none: undefined, source: "manual", suggestedBy: "ai" });
+    // Confirmed: now it counts.
+    const after = engagementReadiness(eng, [{ ...ai[0], inputs: confirmedInputs(r.suggested[0]) }], items, "2026-11-23");
+    expect(after.blocked.map((s) => s.step.id)).toEqual(["s2"]);
+  });
+
+  it("the exports say how many steps aren't confirmed yet", () => {
+    const withOneConfirmed = plan.map((p) => (p.id === "s1" ? { ...p, inputs: { rfiIds: ["r2"], extra: [], source: "manual" as const } } : p));
+    const r = engagementReadiness(eng, withOneConfirmed, items, "2026-11-23");
+    expect(blockersPlainText([r])).toContain("Widget Co: 1 steps can be executed now, 1 blocked (2 more steps not confirmed yet, not included).");
   });
 
   it("reads the AI's links", () => {

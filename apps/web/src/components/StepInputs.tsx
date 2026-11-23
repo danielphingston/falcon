@@ -23,31 +23,50 @@ export function StepInputs({ item }: { item: PlanItem }) {
   const cur: { rfiIds: string[]; extra: { name: string; received: boolean }[]; none?: boolean } = item.inputs ?? { rfiIds: guess!.rfiIds, extra: guess!.missing.map((name) => ({ name, received: false })) };
   const rfiIds = cur.rfiIds.filter((id) => byId.has(id));
 
-  const save = (next: { rfiIds?: string[]; extra?: { name: string; received: boolean }[]; none?: boolean }) =>
-    act(null, (ctx) =>
+  const confirmed = item.inputs?.source === "manual";
+  // What suggested these links: kept when the user confirms or edits them.
+  const suggestedBy = confirmed ? item.inputs?.suggestedBy : item.inputs?.source === "ai" ? "ai" : "matcher";
+  // Any change here (or Confirm) saves the links as the user's own, which is what makes them count.
+  const save = (next: { rfiIds?: string[]; extra?: { name: string; received: boolean }[]; none?: boolean }, message: string | null = null) =>
+    act(message, (ctx) =>
       update(ctx, "planItems", item.id, {
-        inputs: { rfiIds: next.rfiIds ?? rfiIds, extra: next.extra ?? cur.extra, none: next.none || undefined, source: "manual" },
+        inputs: { rfiIds: next.rfiIds ?? rfiIds, extra: next.extra ?? cur.extra, none: next.none || undefined, source: "manual", ...(suggestedBy ? { suggestedBy } : {}) },
       }),
     );
-  const reset = () => act("Back to the automatic match", (ctx) => update(ctx, "planItems", item.id, { inputs: undefined }));
+  const reset = () => act("Back to the offline matcher's suggestion", (ctx) => update(ctx, "planItems", item.id, { inputs: undefined }));
+  const hasLinks = !!cur.none || rfiIds.length > 0 || cur.extra.length > 0;
 
   const q = query.trim().toLowerCase();
   const options = q ? rfi.filter((r) => !rfiIds.includes(r.id) && `${r.number} ${r.description} ${r.section ?? ""}`.toLowerCase().includes(q)).slice(0, 8) : [];
-  const source = item.inputs?.source === "manual" ? "Set by you" : item.inputs?.source === "ai" ? "Linked by AI" : "Matched from the wording";
+  const source = confirmed
+    ? `Confirmed by you${item.inputs?.suggestedBy === "ai" ? " (suggested by AI)" : item.inputs?.suggestedBy === "matcher" ? " (suggested by the matcher)" : ""}`
+    : item.inputs?.source === "ai"
+      ? "✦ Suggested by AI · not confirmed"
+      : hasLinks
+        ? "≈ Suggested by the matcher · not confirmed"
+        : "Not linked";
 
   return (
     <div className="space-y-2">
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold">Inputs needed</h3>
-        <span className="text-xs muted">
+        <span className="text-right text-xs muted">
           {source}
           {item.inputs && (
-            <button className="ml-2 text-[var(--accent)]" onClick={() => void reset()}>
+            <button className="ml-2 text-[var(--accent)]" onClick={() => void reset()} title="Drop these links and go back to the offline matcher's suggestion">
               Reset
             </button>
           )}
         </span>
       </div>
+      {!confirmed && hasLinks && (
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          <span>Suggested links don't count as ready or blocked until you confirm them. Check them below, change anything that's wrong, then confirm.</span>
+          <button className="btn btn-primary btn-sm shrink-0" onClick={() => void save({}, "Links confirmed")}>
+            Confirm
+          </button>
+        </div>
+      )}
       <div className="space-y-2 rounded-xl border border-[var(--border)] p-3 text-sm">
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={!!cur.none} onChange={(e) => void save({ none: e.target.checked, rfiIds: e.target.checked ? [] : rfiIds, extra: e.target.checked ? [] : cur.extra })} />

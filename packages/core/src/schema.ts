@@ -288,7 +288,10 @@ export const planItemFields = z.object({
       rfiIds: z.array(z.string()).default([]),
       extra: z.array(z.object({ name: z.string().trim().min(1), received: z.boolean().default(false) })).default([]),
       none: z.boolean().optional(),
+      /** manual: confirmed by the user. ai: an AI suggestion, not counted until confirmed. */
       source: z.enum(["manual", "ai"]),
+      /** For confirmed links: what suggested them. */
+      suggestedBy: z.enum(["ai", "matcher"]).optional(),
     })
     .optional(),
 });
