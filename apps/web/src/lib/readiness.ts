@@ -4,12 +4,12 @@
  *
  * Mindful of tokens and Gemini's busy spells: by default only the steps the
  * offline matcher couldn't link are sent, in small batches of short text;
- * busy answers are retried and then tried on a lighter model; if a batch
+ * busy answers are retried on the chosen model (never a different one); if a batch
  * still fails, what finished is kept.
  */
-import { engagementReadiness, geminiJsonResilient, linkPrompt, loadSnapshot, parseLinkReply, todayISO, update, type AiLink } from "@falcon/core";
+import { engagementReadiness, geminiJson, linkPrompt, loadSnapshot, parseLinkReply, todayISO, type AiLink } from "@falcon/core";
 import { getSettings, store } from "../db";
-import { act } from "./act";
+import { actTool } from "./act";
 import { chatAuth, friendlyError } from "./chat";
 
 const BATCH = 20;
@@ -22,8 +22,6 @@ export interface LinkResult {
   left: number;
   /** Set when something went wrong (the linked steps are still saved). */
   error?: string;
-  /** The model that answered, when it wasn't the one in Settings. */
-  fallback?: string;
 }
 
 /** Steps Link with AI would send for this engagement. */
@@ -32,7 +30,8 @@ export async function linkCandidates(engagementId: string, scope: LinkScope) {
   const e = snap.engagements.find((x) => x.id === engagementId);
   if (!e) return [];
   const r = engagementReadiness(e, snap.planItems, snap.infoRequests, todayISO());
-  const pick = scope === "unlinked" ? r.unlinked : r.steps.filter((s) => s.source !== "manual");
+  // Steps you set by hand are never sent, even if you cleared all their links.
+  const pick = (scope === "unlinked" ? r.unlinked : r.steps).filter((s) => s.source !== "manual");
   return pick.map((s) => s.step);
 }
 
@@ -49,14 +48,12 @@ export async function linkWithAi(engagementId: string, scope: LinkScope, onProgr
   const settings = await getSettings();
   const links: AiLink[] = [];
   let error: string | undefined;
-  let fallback: string | undefined;
   let done = 0;
   onProgress?.(0, steps.length);
   for (let i = 0; i < steps.length; i += BATCH) {
     const part = steps.slice(i, i + BATCH);
     try {
-      const { text, model } = await geminiJsonResilient(auth, settings.geminiModel, linkPrompt({ engagement: e.name, kind: e.type, steps: part, rfi }));
-      if (model !== settings.geminiModel) fallback = model;
+      const text = await geminiJson(auth, settings.geminiModel, linkPrompt({ engagement: e.name, kind: e.type, steps: part, rfi }));
       links.push(...parseLinkReply(text, part, rfi));
     } catch (err) {
       error = friendlyError(err);
@@ -65,13 +62,18 @@ export async function linkWithAi(engagementId: string, scope: LinkScope, onProgr
     done += part.length;
     onProgress?.(done, steps.length);
   }
-  if (links.length)
-    await act(`AI linked ${links.length} step${links.length === 1 ? "" : "s"} to the RFI`, async (ctx) => {
-      const out = [];
-      for (const l of links)
-        out.push(await update(ctx, "planItems", l.stepId, { inputs: { rfiIds: l.rfiIds, extra: l.extra.map((name) => ({ name, received: false })), none: l.none || undefined, source: "ai" } }));
-      return out;
-    });
-  else if (!error) error = "The AI didn't return any links. Try again.";
-  return { linked: links.length, left: steps.length - done, error, fallback };
+  let linked = 0;
+  if (links.length) {
+    // Saved through the shared tool (same rules as the chat and MCP: hand-set steps are never touched), as one undo.
+    const res = (await actTool(
+      (r) => {
+        const n = (r as { saved: number }).saved;
+        return `AI linked ${n} step${n === 1 ? "" : "s"} to the RFI`;
+      },
+      "set_step_inputs",
+      { engagement: engagementId, steps: links.map((l) => ({ step: l.stepId, rfi: l.rfiIds, notOnRfi: l.extra, none: l.none })) },
+    )) as { saved: number } | undefined;
+    linked = res?.saved ?? 0;
+  } else if (!error) error = "The AI didn't return any links. Try again.";
+  return { linked, left: steps.length - done, error };
 }

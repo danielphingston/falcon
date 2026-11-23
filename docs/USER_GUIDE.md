@@ -135,7 +135,7 @@ Other sheets in the file (time summary, risks and instructions…) are kept unde
 
 **How steps are linked to the RFI:** the app matches each step's wording with the RFI items, understanding common audit terms (FAR = fixed asset register, BRS = bank reconciliation, BoA = books / TB / GL, 26AS, GSTR-2B, UBR/UER…). It's a good first pass, not perfect. To improve it:
 
-- **Link with AI** asks Gemini to link every open step of the engagement (and to list inputs missing from the RFI). One Undo reverses it.
+- **Link with AI** asks Gemini to link the steps the app couldn't link itself (and to list inputs missing from the RFI); **Re-check all with AI** sends every open step. A warning comes first: the AI can fail (Google's servers busy, rate limits) or link wrongly, so only use it with a capable model on a paid Gemini plan; otherwise link steps by hand. If Google is busy it retries twice on your model, then stops; it never switches to another model. One Undo reverses a run, and steps you set by hand are never touched.
 - Tap any step and change **Inputs needed**: search the RFI to add an item, remove one with ×, add an input that isn't on the RFI (tap its chip when it comes in), or tick **No client input needed**. Your changes are kept and never overwritten by the AI; **Reset** goes back to the automatic match.
 
 ## Work papers and review points
@@ -249,6 +249,25 @@ Connect Google in **Settings** to see your Google events here too.
 5. Deletes always ask first. Tap **Delete** to confirm or **Keep** to cancel.
 
 Use **New chat** to start again. Chat history stays on this device.
+
+## AI connections (use Falcon from Claude)
+
+**What it's for:** asking Claude Desktop, Claude Code or another MCP app about your work and letting it make changes, with the same abilities as the Assistant. Every change is logged in Falcon, per session, with Undo.
+
+**How to**
+
+1. Open **AI connections** (menu, More, or Settings → AI assistant). Copy the **pairing code**.
+2. Claude Desktop: download **falcon-bridge.mcpb** from the page, open it, and paste the pairing code when Claude asks. Claude Code and other MCP apps: download **falcon-bridge.mjs** and add it with the command or config shown on the page (needs Node 18+).
+3. Tick **Allow AI connections on this device** and keep Falcon open in this browser. The status turns **Connected** when the AI app starts the bridge. If the browser asks to allow access to apps on this device, choose **Allow**.
+4. Ask Claude things like "What's blocked on Project Falcon and why?" or "Add these RFI items from the screenshot".
+5. **Sessions** lists each AI session (which app, when it ran, how many changes, reads and failures). Open one to see each change; tap **Undo** to reverse it. Tick **Show reads** to include what it only read.
+
+**Good to know**
+
+- The bridge runs only on this computer and only accepts Falcon with your pairing code. **New code** stops old setups until you enter the new code in the AI app.
+- The session log keeps what the AI did (not the chat) for 7 days, on this device only: not synced, not in backups. **Clear log** empties it without undoing anything.
+- Claude's own "undo" only reverses its own changes, and undo never overwrites edits made since.
+- What the AI reads goes to that AI service as part of your chat. Firm checklists are never shared. The web and phone versions of Claude can't use it.
 
 ## Settings
 

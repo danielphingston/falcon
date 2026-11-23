@@ -6,6 +6,7 @@ const links: { to: string; label: string; hint: string; icon: IconName }[] = [
   { to: "/review", label: "Review", hint: "Work papers you review and prepare", icon: "review" },
   { to: "/readiness", label: "Readiness", hint: "Work plan steps you can do now, and blockers", icon: "check" },
   { to: "/chat", label: "Assistant", hint: "Run your day by chatting with Gemini", icon: "sparkles" },
+  { to: "/connections", label: "AI connections", hint: "Use Falcon from Claude, and what each session changed", icon: "send" },
   { to: "/time", label: "Time & focus", hint: "Focus timer and timesheet", icon: "clock" },
   { to: "/reports", label: "Reports", hint: "Daily and weekly summaries", icon: "flag" },
   { to: "/progress", label: "Progress", hint: "Ring, streaks, level and badges", icon: "flag" },

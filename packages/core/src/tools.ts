@@ -747,10 +747,17 @@ export const tools = [
     input: z.object({
       engagement: z.string(),
       person: z.string().optional().describe("Only steps this person is responsible for"),
+      includeRfi: z.boolean().optional().describe("Also return the engagement's RFI items (number, status, short description), e.g. to link steps with set_step_inputs"),
     }),
-    async run(ctx, { engagement, person }) {
+    async run(ctx, { engagement, person, includeRfi }) {
       const snap = await loadSnapshot(ctx.store);
       const e = await resolveEngagement(ctx.store, engagement);
+      const rfi = includeRfi
+        ? snap.infoRequests
+            .filter((r) => r.engagementId === e.id)
+            .sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }))
+            .map((r) => ({ number: r.number, section: r.section, status: r.status, description: r.description.split("\n")[0].slice(0, 140) }))
+        : undefined;
       const full = person ? ((await resolvePerson(ctx, person).catch(() => undefined))?.name ?? person) : "";
       const plan = snap.planItems.filter((i) => !person || namedIn(i.assignee, full) || namedIn(i.assignee, person));
       const names = new Map(snap.people.map((p) => [p.id, p.name]));
@@ -764,7 +771,86 @@ export const tools = [
         blocked: r.blocked.map((s) => ({ ...line(s), because: s.blockers.map(blockerText) })),
         holdingUp: r.byInput.slice(0, 20).map((g) => ({ input: blockerText(g.blocker), steps: g.steps.map((s) => s.number) })),
         notLinked: r.unlinked.map(line),
+        rfi,
       };
+    },
+  }),
+
+  tool({
+    name: "set_step_inputs",
+    kind: "write",
+    description:
+      "Record which client inputs work plan steps need, for the Readiness page: RFI item numbers, inputs that aren't on the RFI (e.g. 'GSTR-2B for the period'), or that a step needs no client input. Several steps per call. Steps whose inputs the user set by hand are skipped. Get step ids and RFI numbers from get_readiness with includeRfi.",
+    input: z.object({
+      engagement: z.string(),
+      steps: z
+        .array(
+          z.object({
+            step: z.string().describe("Step id, or its number as shown on the plan (e.g. '7.3')"),
+            rfi: z.array(z.string()).optional().describe("RFI item numbers the step needs"),
+            notOnRfi: z.array(z.string()).optional().describe("Inputs the step needs that aren't on the RFI"),
+            none: z.boolean().optional().describe("True when the step needs no client input"),
+          }),
+        )
+        .min(1)
+        .max(100),
+      mode: z.enum(["replace", "add"]).optional().describe("replace (default) sets the step's inputs; add keeps what it has and adds these"),
+    }),
+    async run(ctx, { engagement, steps, mode }) {
+      const e = await resolveEngagement(ctx.store, engagement);
+      const plan = (await ctx.store.list("planItems")).filter((i) => !i.deleted && i.engagementId === e.id);
+      const rfi = (await ctx.store.list("infoRequests")).filter((r) => !r.deleted && r.engagementId === e.id);
+      const rfiId = (ref: string) => {
+        const k = ref.replace(/^#|^rfi\s*/i, "").trim();
+        return rfi.find((r) => r.id === k)?.id ?? rfi.find((r) => r.number.trim() === k)?.id;
+      };
+      const saved: string[] = [];
+      const skipped: { step: string; why: string }[] = [];
+      for (const s of steps) {
+        const item = plan.find((i) => i.id === s.step) ?? plan.find((i) => i.number === s.step.trim());
+        if (!item) {
+          skipped.push({ step: s.step, why: "no such step on this engagement's work plan" });
+          continue;
+        }
+        if (item.inputs?.source === "manual") {
+          skipped.push({ step: item.number, why: "inputs were set by hand; left as they are" });
+          continue;
+        }
+        const ids = (s.rfi ?? []).map(rfiId);
+        const unknown = (s.rfi ?? []).filter((_, i) => !ids[i]);
+        if (unknown.length) skipped.push({ step: item.number, why: `unknown RFI numbers ignored: ${unknown.join(", ")}` });
+        const keep = mode === "add" && item.inputs ? item.inputs : { rfiIds: [], extra: [] as { name: string; received: boolean }[] };
+        const rfiIds = [...new Set([...keep.rfiIds, ...ids.filter((x): x is string => !!x)])];
+        const extra = [...keep.extra];
+        for (const name of s.notOnRfi ?? []) if (name.trim() && !extra.some((x) => x.name.toLowerCase() === name.trim().toLowerCase())) extra.push({ name: name.trim(), received: false });
+        const none = !!s.none && !rfiIds.length && !extra.length;
+        await update(ctx, "planItems", item.id, { inputs: { rfiIds, extra, none: none || undefined, source: "ai" } });
+        saved.push(item.number);
+      }
+      return { engagement: e.name, saved: saved.length, steps: saved, skipped };
+    },
+  }),
+
+  tool({
+    name: "add_point_challenges",
+    kind: "write",
+    description:
+      "Save counter-questions on a review point ('have you also checked…?'), each with a one-line why. They show on the point for the reviewer to add or dismiss. Replaces earlier AI questions that are still open.",
+    input: z.object({
+      pointId: z.string(),
+      questions: z.array(z.object({ question: z.string().min(3), why: z.string().optional() })).min(1).max(8),
+    }),
+    async run(ctx, { pointId, questions }) {
+      const p = await ctx.store.get("reviewPoints", pointId);
+      if (!p || p.deleted) throw new Error(`No review point with id ${pointId}`);
+      if (p.private) throw new Error("This point came from a firm checklist, so the AI doesn't handle it.");
+      const kept = (p.challenges ?? []).filter((q) => q.source !== "ai" || q.status !== "open");
+      const seen = new Set(kept.map((q) => q.question.toLowerCase()));
+      const fresh = questions
+        .filter((q) => !seen.has(q.question.toLowerCase()))
+        .map((q) => ({ question: q.question, why: q.why ?? "", source: "ai" as const, status: "open" as const }));
+      await update(ctx, "reviewPoints", pointId, { challenges: [...kept, ...fresh] });
+      return { added: fresh.length };
     },
   }),
 

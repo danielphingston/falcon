@@ -13,6 +13,25 @@ import {
   type TableName,
 } from "@falcon/core";
 
+/** One thing an AI did through the MCP bridge (or a session starting / ending). */
+export interface BridgeLogEntry {
+  id: string;
+  sessionId: string;
+  /** The AI app, e.g. "claude-ai 0.1.0". */
+  client: string;
+  at: string;
+  kind: "start" | "end" | "call";
+  tool?: string;
+  args?: unknown;
+  ok?: boolean;
+  error?: string;
+  /** Undo batch of the call; set when it changed something. */
+  batchId?: string;
+  /** How many records the call changed. */
+  changed?: number;
+  summary?: string;
+}
+
 type Tables = { [K in TableName]: Table<EntityMap[K], string> };
 
 class FalconDB extends Dexie {
@@ -24,6 +43,9 @@ class FalconDB extends Dexie {
   firmLearned!: Table<LearnedCheck, string>;
   firmAnswers!: Table<FirmAnswer, string>;
   firmLinks!: Table<{ workpaperId: string; templateId: string | null }, string>;
+  // What AIs did through the MCP bridge, per session. This device only, kept 7
+  // days: not synced, not in backups.
+  bridgeLog!: Table<BridgeLogEntry, string>;
 
   constructor() {
     // The app's old name. Renaming the database would strand existing data.
@@ -62,6 +84,9 @@ class FalconDB extends Dexie {
     });
     this.version(6).stores({
       planItems: "id, engagementId",
+    });
+    this.version(7).stores({
+      bridgeLog: "id, sessionId, at",
     });
   }
 }

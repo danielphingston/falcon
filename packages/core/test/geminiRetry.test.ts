@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { geminiJsonResilient, type GeminiAuth } from "../src";
+import { geminiJson, type GeminiAuth } from "../src";
 
 const auth: GeminiAuth = { accessToken: async () => "t" };
 const ok = (text: string) => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] }), { status: 200 });
@@ -16,31 +16,30 @@ describe("Gemini when it's busy", () => {
     const calls: string[] = [];
     let n = 0;
     vi.stubGlobal("fetch", async (url: string) => (calls.push(url), n++ < 2 ? busy() : ok("{}")));
-    const p = geminiJsonResilient(auth, "gemini-x-flash", "hi");
+    const p = geminiJson(auth, "gemini-3.8-flash", "hi");
     await vi.runAllTimersAsync();
-    expect(await p).toEqual({ text: "{}", model: "gemini-x-flash" });
+    expect(await p).toBe("{}");
     expect(calls).toHaveLength(3);
   });
 
-  it("moves to a lighter model when the chosen one stays busy", async () => {
+  it("only ever uses the chosen model, then reports busy", async () => {
     vi.useFakeTimers();
     const used: string[] = [];
     vi.stubGlobal("fetch", async (url: string) => {
-      if (url.includes("/models?")) return new Response(JSON.stringify({ models: [{ name: "models/gemini-x-flash", supportedGenerationMethods: ["generateContent"] }, { name: "models/gemini-x-flash-lite", supportedGenerationMethods: ["generateContent"] }] }));
-      const model = /models\/([^:]+):/.exec(url)![1];
-      used.push(model);
-      return model === "gemini-x-flash" ? busy() : ok('{"links":[]}');
+      used.push(url.includes("/models?") ? "LIST" : /models\/([^:]+):/.exec(url)![1]);
+      return busy();
     });
-    const p = geminiJsonResilient(auth, "gemini-x-flash", "hi");
+    const p = geminiJson(auth, "gemini-3.8-flash", "hi").catch((e) => e);
     await vi.runAllTimersAsync();
-    expect(await p).toEqual({ text: '{"links":[]}', model: "gemini-x-flash-lite" });
-    expect(used).toEqual(["gemini-x-flash", "gemini-x-flash", "gemini-x-flash", "gemini-x-flash-lite"]);
+    expect(await p).toMatchObject({ status: 503 });
+    // Three tries on the same model; no other model, not even a model list lookup.
+    expect(used).toEqual(["gemini-3.8-flash", "gemini-3.8-flash", "gemini-3.8-flash"]);
   });
 
   it("doesn't retry real errors", async () => {
     let n = 0;
     vi.stubGlobal("fetch", async () => (n++, new Response(JSON.stringify({ error: { status: "PERMISSION_DENIED", message: "no" } }), { status: 403 })));
-    await expect(geminiJsonResilient(auth, "m", "hi")).rejects.toMatchObject({ status: 403 });
+    await expect(geminiJson(auth, "m", "hi")).rejects.toMatchObject({ status: 403 });
     expect(n).toBe(1);
   });
 });

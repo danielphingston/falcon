@@ -3,6 +3,7 @@ import {
   computeToday,
   loadSnapshot,
   newId,
+  runTool,
   todayISO,
   undoBatch,
   type Ctx,
@@ -82,4 +83,31 @@ export function directionFor(from: string, to: string): "forward" | "back" | "fa
   const a = depth(from);
   const b = depth(to);
   return b > a ? "forward" : b < a ? "back" : "fade";
+}
+
+/**
+ * Runs one of the shared AI tools (the same code the chat and MCP use) as the
+ * app, with an Undo toast. Returns the tool's result, or undefined on error.
+ */
+export async function actTool(message: string | ((result: unknown) => string | null) | null, name: string, input: unknown): Promise<unknown> {
+  const r = await runTool({ store, by: "app" }, name, input);
+  if (!r.ok) {
+    toast({ message: r.error ?? "Something went wrong", tone: "error" });
+    return undefined;
+  }
+  scheduleSync();
+  const text = typeof message === "function" ? message(r.result) : message;
+  if (text)
+    toast({
+      message: text,
+      action: {
+        label: "Undo",
+        run: async () => {
+          await undoBatch(store, r.batchId);
+          scheduleSync();
+          toast({ message: "Undone", duration: 1800 });
+        },
+      },
+    });
+  return r.result;
 }

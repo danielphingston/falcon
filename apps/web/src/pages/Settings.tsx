@@ -2,6 +2,7 @@ import { useRef, useState, type ReactNode } from "react";
 import { BACKUP_VERSION, GEMINI_OAUTH_SCOPE, listGeminiModels, mergeRecords, parseBackup, tableNames, type Backup, type Settings } from "@falcon/core";
 import { chatAuth, clearChat, friendlyError } from "../lib/chat";
 import { Icon } from "../components/Icon";
+import { TLink } from "../components/TLink";
 import { Segmented } from "../components/ui";
 import { db, getSettings, saveSettings } from "../db";
 import { act } from "../lib/act";
@@ -408,6 +409,11 @@ function AiGroup({ s }: { s: Settings }) {
       <p className="px-4 py-3 text-xs muted">
         Messages and attachments you send go to Google's Gemini API. Use a paid (billing-enabled) project or key, so Google doesn't use them to improve its products, and check your firm's policy before sharing client documents.
       </p>
+      <Row label="Use Falcon from Claude" hint="Connect Claude Desktop, Claude Code or another MCP app through the local bridge, and see what each session changed">
+        <TLink className="btn btn-soft btn-sm" to="/connections">
+          <Icon name="send" size={14} /> AI connections
+        </TLink>
+      </Row>
     </Group>
   );
 }

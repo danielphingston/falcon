@@ -35,8 +35,7 @@ async function check(res: Response) {
   throw new GeminiApiError(res.status, msg);
 }
 
-/** "Busy" answers worth another try: rate limit, overloaded, gateway errors. */
-export const isBusy = (e: unknown) => e instanceof GeminiApiError && [429, 500, 502, 503, 504].includes(e.status);
+/** "Busy" answers worth another try on the same model: rate limit, overloaded, gateway errors. */
 const BUSY = new Set([429, 500, 502, 503, 504]);
 const DELAYS = [1500, 4000];
 
@@ -126,38 +125,4 @@ export async function geminiJson(auth: GeminiAuth, model: string, prompt: string
   await check(res);
   const body = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
   return (body.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
-}
-
-let modelList: Promise<string[]> | undefined;
-
-/** Lighter models to try when the chosen one stays busy: flash-lite first, then other flash models. */
-export async function fallbackModels(auth: GeminiAuth, model: string): Promise<string[]> {
-  modelList ??= listGeminiModels(auth).catch(() => {
-    modelList = undefined;
-    return [];
-  });
-  const usable = (await modelList).filter((m) => m !== model && /flash/.test(m) && !/image|tts|audio|live|embed|vision/.test(m));
-  return [...usable.filter((m) => /lite/.test(m)), ...usable.filter((m) => !/lite/.test(m))].slice(0, 2);
-}
-
-/**
- * geminiJson that moves to a lighter model when the chosen one is overloaded
- * even after retries. Returns the text and the model that answered.
- */
-export async function geminiJsonResilient(auth: GeminiAuth, model: string, prompt: string, signal?: AbortSignal): Promise<{ text: string; model: string }> {
-  try {
-    return { text: await geminiJson(auth, model, prompt, signal), model };
-  } catch (e) {
-    if (!isBusy(e)) throw e;
-    let last = e;
-    for (const m of await fallbackModels(auth, model)) {
-      try {
-        return { text: await geminiJson(auth, m, prompt, signal), model: m };
-      } catch (e2) {
-        if (!isBusy(e2)) throw e2;
-        last = e2;
-      }
-    }
-    throw last;
-  }
 }
