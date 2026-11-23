@@ -76,8 +76,8 @@ async function unzip(bytes: Uint8Array): Promise<Map<string, () => Promise<Uint8
     const local = view.getUint32(p + 42, true);
     const name = decoder.decode(bytes.subarray(p + 46, p + 46 + nameLen));
     p += 46 + nameLen + extraLen + commentLen;
-    // Only the parts we read: workbook, relationships, shared strings, worksheets.
-    if (!/^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml|worksheets\/[^/]+\.xml)$/.test(name)) continue;
+    // Only the parts we read: workbook, relationships, shared strings, worksheets (and their links).
+    if (!/^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml|worksheets\/[^/]+\.xml|worksheets\/_rels\/[^/]+\.xml\.rels)$/.test(name)) continue;
     const dataStart = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true);
     const raw = bytes.subarray(dataStart, dataStart + size);
     if (method !== 0 && method !== 8) throw new Error("This .xlsx uses an unsupported compression method");
@@ -120,7 +120,9 @@ async function readXlsx(bytes: Uint8Array, only?: (name: string) => boolean): Pr
     const target = (rels.get(rid) ?? "").replace(/^\/?(xl\/)?/, "");
     const bytesOfSheet = await get(`xl/${target}`);
     if (!bytesOfSheet) continue;
-    const rows = scanSheet(new TextDecoder().decode(bytesOfSheet), strings);
+    const sheetXml = new TextDecoder().decode(bytesOfSheet);
+    const rows = scanSheet(sheetXml, strings);
+    const links = await sheetLinks(sheetXml, get, `xl/${target}`);
     // Dense rows, but only as wide as the table: a stray value thousands of
     // columns out (seen in real RFIs) is cut at the first gap of 64+ empty columns.
     const used = new Set<number>();
@@ -131,9 +133,36 @@ async function readXlsx(bytes: Uint8Array, only?: (name: string) => boolean): Pr
       if (c - width > 64) break;
       width = c + 1;
     }
-    sheets.push({ name: s.getAttribute("name") ?? `Sheet ${sheets.length + 1}`, rows: Array.from(rows, (r) => Array.from({ length: width }, (_, i) => r?.[i] ?? "")) });
+    sheets.push({
+      name: s.getAttribute("name") ?? `Sheet ${sheets.length + 1}`,
+      rows: Array.from(rows, (r) => Array.from({ length: width }, (_, i) => r?.[i] ?? "")),
+      ...(links ? { links } : {}),
+    });
   }
   return sheets;
+}
+
+/** Web links on cells (<hyperlinks> + the sheet's relationships), keyed "row,col". */
+async function sheetLinks(sheetXml: string, get: (name: string) => Promise<Uint8Array | undefined>, sheetPath: string) {
+  const tags = sheetXml.match(/<hyperlink\b[^>]*>/g);
+  if (!tags) return undefined;
+  const relPath = sheetPath.replace(/worksheets\/([^/]+)$/, "worksheets/_rels/$1.rels");
+  const relBytes = await get(relPath);
+  const relText = relBytes ? new TextDecoder().decode(relBytes) : "";
+  const targets = new Map<string, string>();
+  for (const m of relText.matchAll(/<Relationship\b[^>]*>/g)) {
+    const id = /\sId="([^"]+)"/.exec(m[0])?.[1];
+    const t = /\sTarget="([^"]+)"/.exec(m[0])?.[1];
+    if (id && t) targets.set(id, unescapeXml(t));
+  }
+  const out: Record<string, string> = {};
+  for (const tag of tags) {
+    const ref = /\sref="([A-Z]+)(\d+)(?::[A-Z]+\d+)?"/.exec(tag);
+    const id = /\sr:id="([^"]+)"/.exec(tag)?.[1];
+    const url = id ? targets.get(id) : undefined;
+    if (ref && url && /^(https?:|mailto:)/i.test(url)) out[`${Number(ref[2]) - 1},${colIndex(ref[1])}`] = url;
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 const unescapeXml = (s: string) =>

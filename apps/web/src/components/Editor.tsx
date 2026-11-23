@@ -74,7 +74,7 @@ const nouns: Record<TableName, string> = {
   workstreams: "workstream",
   workpapers: "work paper",
   reviewPoints: "review point",
-  infoRequests: "IRL item",
+  infoRequests: "RFI item",
   followUps: "follow-up",
   people: "contact",
   alerts: "reminder",
@@ -185,6 +185,7 @@ function Extras({ table, record }: { table: TableName; record: AnyEntity }) {
     <div className="mt-5 space-y-5">
       {table === "workpapers" && <ReviewChecklist wp={record as EntityMap["workpapers"]} />}
       {table === "workpapers" && <ReviewPointsPanel wp={record as EntityMap["workpapers"]} />}
+      {table === "infoRequests" && <RfiDetails item={record as EntityMap["infoRequests"]} />}
       {(table === "infoRequests" || table === "followUps") && (
         <ChasePanel table={table} record={record as EntityMap["infoRequests"] | EntityMap["followUps"]} />
       )}
@@ -205,6 +206,45 @@ function Extras({ table, record }: { table: TableName; record: AnyEntity }) {
           <Icon name="bell" size={16} /> Remind me
         </button>
       )}
+    </div>
+  );
+}
+
+/** Everything else the RFI said about this request, with the sheet's own column names. */
+function RfiDetails({ item }: { item: EntityMap["infoRequests"] }) {
+  const fields = item.fields ?? [];
+  if (!fields.length && !item.subsection && !item.description.includes("\n")) return null;
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold">From the RFI</h3>
+      <dl className="divide-y divide-[var(--border)] rounded-xl border border-[var(--border)] text-sm">
+        {(item.section || item.subsection) && (
+          <div className="flex gap-3 px-3 py-2">
+            <dt className="w-36 shrink-0 muted">Section</dt>
+            <dd className="min-w-0">{[item.section, item.subsection].filter(Boolean).join(" › ")}</dd>
+          </div>
+        )}
+        {item.description.includes("\n") && (
+          <div className="flex gap-3 px-3 py-2">
+            <dt className="w-36 shrink-0 muted">Sub-points</dt>
+            <dd className="min-w-0 whitespace-pre-line">{item.description.split("\n").slice(1).join("\n")}</dd>
+          </div>
+        )}
+        {fields.map((f, i) => (
+          <div key={i} className="flex gap-3 px-3 py-2">
+            <dt className="w-36 shrink-0 muted">{f.label}</dt>
+            <dd className="min-w-0 break-words">
+              {f.link ? (
+                <a className="text-[var(--accent)] underline" href={f.link} target="_blank" rel="noopener noreferrer">
+                  {f.value === f.link ? "Open link" : f.value} ↗
+                </a>
+              ) : (
+                f.value
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }

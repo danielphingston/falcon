@@ -87,7 +87,11 @@ The file is read on your device only. Importing again later **updates** existing
 4. Requests are grouped by section (Generals, Trade Payables…) and numbered 1.1, 1.2 … 1.10. Sub-points ("- Sanction letter") stay with their request. The annexure, the client's comments, the person responsible and the expected date (EDR) show on each request; your remarks go into its notes.
 5. When the client sends the RFI back with updates, tap **Update from RFI** and choose the new file. Matching requests are updated (status, dates, comments); new ones are added; your chase history is kept. Nothing is duplicated.
 
-Statuses map as: Received → received, Pending / Shared → pending, Partial → partial, Not applicable → n.a., Not available → n.a. with a note.
+Statuses map as: Received → received, To be received / Pending / Shared → pending, Partially received → partial, Not applicable → n.a., Not available → n.a. with a note.
+
+**Layouts it reads.** Columns are found by their headers, so the firm's different trackers work: "Sl No / Particulars / Status", or "Sl No / Area / File No / Particulars (or Checklist) / Criticality / Date of request / Status (of input) / Date of input / POC or Parties / Annexure / Folder link / Remarks…". Requests keep the sheet's own numbers (2.10, 5.11), so they match file names in the data room. Sub-headings ("Bank:", "Employee Statutory Dues › ESIC") are kept.
+
+**Everything on the sheet is kept, except annexures.** Every other column is saved with its own header (Criticality, Folder link with its web link, "Remarks - Firm", "Remarks - Client 28.9.26"…). Open a request to see them under **From the RFI**. Columns named after the client (for Acme Pvt Ltd, "Remarks [Acme]" or "Acme Status") become the client's comment. The title block, notes to the client (a Notes sheet or "Please Note" lines under the table) and section notes appear under **RFI details** on the tab. Annexure sheets (A, A1, A2…, "Annexure…") are not imported.
 
 **How to**
 

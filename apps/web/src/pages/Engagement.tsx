@@ -14,6 +14,7 @@ import {
   mailtoHref,
   relativeDay,
   update,
+  type Engagement,
   type Snapshot,
 } from "@falcon/core";
 import { openEditor } from "../components/Editor";
@@ -301,6 +302,67 @@ function PointsTab({ snap, id }: TabProps) {
   );
 }
 
+/** Requests in order, grouped by their sub-heading ("Bank", "Employee Statutory Dues › ESIC"). */
+function subGroups<T extends { subsection?: string }>(rows: T[]): [string, T[]][] {
+  const out: [string, T[]][] = [];
+  for (const r of rows) {
+    const k = r.subsection ?? "";
+    const last = out[out.length - 1];
+    if (last && last[0] === k) last[1].push(r);
+    else out.push([k, [r]]);
+  }
+  return out;
+}
+
+/** The imported RFI's own details: title block, notes to the client, columns. */
+function RfiInfoCard({ info }: { info: NonNullable<Engagement["rfiInfo"]> }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="card p-4 text-sm">
+      <button className="flex w-full items-start justify-between gap-3 text-left" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <div className="min-w-0">
+          <p className="font-semibold">{info.title[0] ?? "RFI"}</p>
+          <p className="truncate text-xs muted">
+            {[...info.title.slice(1, 4)].join(" · ")}
+            {info.file ? ` · ${info.file}` : ""}
+          </p>
+        </div>
+        <span className="shrink-0 text-xs text-[var(--accent)]">{open ? "Hide details ▾" : "RFI details ▸"}</span>
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+            <div className="mt-3 space-y-3 text-xs">
+              {info.title.length > 4 && (
+                <ul className="space-y-0.5">
+                  {info.title.slice(4).map((t) => (
+                    <li key={t}>{t}</li>
+                  ))}
+                </ul>
+              )}
+              {info.notes.length > 0 && (
+                <div>
+                  <p className="mb-1 font-semibold">Notes to the client</p>
+                  <ul className="space-y-0.5">
+                    {info.notes.map((n, i) => (
+                      <li key={i}>{n}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <p className="muted">
+                Columns: {info.columns.join(" · ")}
+                <br />
+                Imported {new Date(info.importedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} from sheet “{info.sheet}”. Annexure sheets aren't imported.
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 function IrlTab({ snap, id }: TabProps) {
   const l = useLookups();
   const today = useToday();
@@ -372,6 +434,7 @@ function IrlTab({ snap, id }: TabProps) {
 
   return (
     <div className="space-y-4">
+      {e.rfiInfo && <RfiInfoCard info={e.rfiInfo} />}
       {all.length > 0 && (
         <div className="card p-4">
           <div className="mb-2 flex items-center justify-between text-sm">
@@ -429,11 +492,17 @@ function IrlTab({ snap, id }: TabProps) {
                       {done}/{allIn.length} received
                     </span>
                   </div>
-                  <AnimatedList>
-                    {list.map((r) => (
-                      <IrlRow key={r.id} item={r} l={l} today={today} hideEngagement />
-                    ))}
-                  </AnimatedList>
+                  {e.rfiInfo?.sectionNotes?.[section] && <p className="px-1 text-xs muted">{e.rfiInfo.sectionNotes[section]}</p>}
+                  {subGroups(list).map(([sub, rows]) => (
+                    <div key={sub || "-"} className="space-y-1.5">
+                      {sub && <p className="px-1 pt-1 text-xs font-semibold uppercase tracking-wide muted">{sub}</p>}
+                      <AnimatedList>
+                        {rows.map((r) => (
+                          <IrlRow key={r.id} item={r} l={l} today={today} hideEngagement />
+                        ))}
+                      </AnimatedList>
+                    </div>
+                  ))}
                 </section>
               );
             })}
