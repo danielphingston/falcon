@@ -17,3 +17,4 @@ export * from "./calendarView";
 export * from "./audit";
 export { MemoryStore } from "./memoryStore";
 export * from "./rfi";
+export * from "./workplan";

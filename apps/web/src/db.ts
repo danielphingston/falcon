@@ -60,6 +60,9 @@ class FalconDB extends Dexie {
       firmAnswers: "id, workpaperId",
       firmLinks: "workpaperId",
     });
+    this.version(6).stores({
+      planItems: "id, engagementId",
+    });
   }
 }
 

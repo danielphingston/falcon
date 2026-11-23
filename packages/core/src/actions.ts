@@ -60,6 +60,7 @@ const completion: Partial<Record<TableName, { field: string; done: (r: Record<st
   infoRequests: { field: "receivedAt", done: (r) => r.status === "received" || r.status === "na" },
   followUps: { field: "doneAt", done: (r) => r.status === "done" },
   engagements: { field: "closedAt", done: (r) => r.status === "closed" },
+  planItems: { field: "closedAt", done: (r) => r.status === "closed" },
 };
 
 /** Sets or clears the completion timestamp so reports and points never depend on callers. */

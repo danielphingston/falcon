@@ -101,6 +101,21 @@ Statuses map as: Received → received, To be received / Pending / Shared → pe
 4. Tap **Email** with the contact's first name to open a chase email with their pending items.
 5. Tap **Chased** on an item to log a chase. Tick **Mark received** when it arrives.
 
+## Work plan (the engagement's audit programme)
+
+**What it's for:** tracking every procedure in the engagement's work plan or audit programme: who does it, who reviews it, and where it stands.
+
+**How to**
+
+1. Open the engagement's **Work plan** tab and tap **Import work plan**. Choose the Excel work plan (an IA plan with Status - Execution / Status - Review / Reviewed by, or an audit programme with phases, risk, applicability and budget/actual hours both work).
+2. Check the preview (steps, people, hours, other sheets kept) and tap **Import**.
+3. Steps are grouped by phase, group (Balance Sheet, P&L…) and area. Lead-ins like "Review of -" or "ROC filings made during the year:" show over their steps. Steps the plan marks not applicable are greyed out.
+4. Tap a step's status chip to move it Open → WIP → Review pending → Closed, and its review chip (when the plan has one) Open → WIP → Closed. Tap the step to see everything else the plan said about it and add notes.
+5. Filters: **Open**, **To review**, **Done** and **Mine** (steps where you're the person responsible or the reviewer; set your name in Settings, initials like "JK" match too). Tap a person's chip to see only their steps.
+6. **Update from work plan** re-imports a newer copy: new steps are added and changes in the sheet come through, but statuses you changed in the app stay unless the sheet itself changed them.
+
+Other sheets in the file (time summary, risks and instructions…) are kept under **Plan details**.
+
 ## Work papers and review points
 
 **What it's for:** the work papers you prepare or review, and the points raised on them.

@@ -118,7 +118,7 @@ export function parseTeamAllocation(sheets: SheetData[]): Allocation {
 
 /**
  * Resolves a possibly short or differently-spaced name to one of `known`:
- * same key ("Dawn mathew" = "Dawn Mathew"), then a unique first-name match
+ * same key ("Asha rao" = "Asha Rao"), then a unique first-name match
  * ("Mayank" = "Mayank Dabriwala"), then a unique prefix ("Manish" = "Manish B Y").
  */
 export function matchName<T extends { name: string }>(raw: string, known: T[]): T | undefined {
