@@ -12,6 +12,7 @@ import { EngagementsPage } from "./pages/Engagements";
 import { EngagementPage } from "./pages/Engagement";
 import { FollowUpsPage } from "./pages/FollowUps";
 import { ReviewPage } from "./pages/Review";
+import { ReadinessPage } from "./pages/Readiness";
 import { PeoplePage } from "./pages/People";
 import { SettingsPage } from "./pages/Settings";
 import { NotFound } from "./pages/NotFound";
@@ -42,6 +43,7 @@ const router = createBrowserRouter(
         { path: "engagements/:id/:tab", element: <EngagementPage /> },
         { path: "followups", element: <FollowUpsPage /> },
         { path: "review", element: <ReviewPage /> },
+        { path: "readiness", element: <ReadinessPage /> },
         { path: "chat", element: <ChatPage /> },
         { path: "calendar", element: <CalendarPage /> },
         { path: "time", element: <TimePage /> },

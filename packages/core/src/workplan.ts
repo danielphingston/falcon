@@ -391,6 +391,36 @@ export function planProgress(items: PlanItem[]): PlanProgress {
   };
 }
 
+/**
+ * A step waiting for the reviewer: marked "Review pending", or (in plans with a
+ * review column) executed but not yet reviewed.
+ */
+export function planAwaitingReview(i: PlanItem, hasReview: boolean): boolean {
+  if (i.deleted || !i.applicable) return false;
+  return hasReview ? (i.status === "closed" || i.status === "review") && i.reviewStatus !== "closed" : i.status === "review";
+}
+
+/**
+ * Steps waiting for my review across live engagements: reviewer is me, or the
+ * step names no reviewer (or my name isn't set yet, so I can't tell).
+ */
+export function planReviewQueue(items: PlanItem[], engagements: { id: string; planInfo?: { hasReview?: boolean } }[], live: Set<string>, myName: string): PlanItem[] {
+  const hasReview = new Map(engagements.map((e) => [e.id, !!e.planInfo?.hasReview]));
+  const known = !!myName && myName !== "Me";
+  return items.filter(
+    (i) => live.has(i.engagementId) && planAwaitingReview(i, hasReview.get(i.engagementId) ?? false) && (!known || !i.reviewer || isMe(i.reviewer, myName)),
+  );
+}
+
+/**
+ * Whether a "person responsible" cell names this person. Cells can name
+ * several people ("Ravi/Dev", "Asha & Mira") or use initials.
+ */
+export function namedIn(cell: string | undefined, fullName: string): boolean {
+  if (!cell) return false;
+  return cell.split(/\s*(?:[/,&+;]|\band\b)\s*/i).some((part) => isMe(part, fullName));
+}
+
 /** Whether a sheet name ("JK", "Jayakrishnan") refers to the app's user. */
 export function isMe(name: string | undefined, myName: string): boolean {
   if (!name || !myName || myName === "Me") return false;

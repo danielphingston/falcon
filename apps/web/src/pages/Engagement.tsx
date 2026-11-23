@@ -11,6 +11,8 @@ import {
   irlRows,
   irlText,
   labels,
+  criticalityRank,
+  rfiCriticality,
   mailtoHref,
   relativeDay,
   update,
@@ -307,6 +309,11 @@ function PointsTab({ snap, id }: TabProps) {
 }
 
 /** Requests in order, grouped by their sub-heading ("Bank", "Employee Statutory Dues › ESIC"). */
+/** Lowest request number in a section, so the area list follows the RFI order. */
+function firstNumber(all: { section?: string; number: string }[], section: string): number {
+  return Math.min(...all.filter((r) => (r.section ?? "") === section).map((r) => parseFloat(r.number) || Infinity));
+}
+
 function subGroups<T extends { subsection?: string }>(rows: T[]): [string, T[]][] {
   const out: [string, T[]][] = [];
   for (const r of rows) {
@@ -376,9 +383,20 @@ function IrlTab({ snap, id }: TabProps) {
   const [bulk, setBulk] = useState("");
   const [from, setFrom] = useState("");
   const [importing, setImporting] = useState(false);
+  const [crit, setCrit] = useState<string[]>([]);
+  const [area, setArea] = useState("");
   const all = snap.infoRequests.filter((r) => r.engagementId === id);
-  const items = all
-    .filter((r) => show === "all" || r.status === "pending" || r.status === "partial")
+  const byStatus = all.filter((r) => show === "all" || r.status === "pending" || r.status === "partial");
+  // Criticality chips (any of the ticked ones) and the area dropdown narrow the list further.
+  const critOf = (r: (typeof all)[number]) => rfiCriticality(r) ?? "";
+  const crits = [...new Set(all.map(critOf).filter(Boolean))].sort((a, b) => criticalityRank(a) - criticalityRank(b) || a.localeCompare(b));
+  const areas = [...new Set(all.map((r) => r.section ?? ""))]
+    .sort((a, b) => Number(!a) - Number(!b) || firstNumber(all, a) - firstNumber(all, b));
+  const inArea = (r: (typeof all)[number]) => !area || (r.section ?? "") === area.slice(1);
+  const inCrit = (r: (typeof all)[number]) => !crit.length || crit.includes(critOf(r));
+  const filtered = crit.length > 0 || !!area;
+  const items = byStatus
+    .filter((r) => inArea(r) && inCrit(r))
     .sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }) || a.createdAt.localeCompare(b.createdAt));
   const open = all.filter((r) => r.status === "pending" || r.status === "partial");
   const received = all.length - open.length;
@@ -480,10 +498,53 @@ function IrlTab({ snap, id }: TabProps) {
           </button>
         </div>
       </div>
+      {(crits.length > 0 || areas.length > 1) && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {crits.map((c) => {
+            const on = crit.includes(c);
+            const n = byStatus.filter((r) => inArea(r) && critOf(r) === c).length;
+            return (
+              <button
+                key={c}
+                aria-pressed={on}
+                onClick={() => setCrit(on ? crit.filter((x) => x !== c) : [...crit, c])}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                  on ? (criticalityRank(c) <= 1 ? "border-rose-500 bg-rose-500 text-white" : criticalityRank(c) === 2 ? "border-amber-500 bg-amber-500 text-white" : "border-[var(--accent)] bg-[var(--accent)] text-white") : "border-[var(--border)]"
+                }`}
+              >
+                {c} · {n}
+              </button>
+            );
+          })}
+          {areas.length > 1 && (
+            <select aria-label="Area" className="input h-8 w-auto max-w-[16rem] py-0 text-xs" value={area} onChange={(ev) => setArea(ev.target.value)}>
+              <option value="">All areas</option>
+              {areas.map((a) => (
+                // "#" prefix keeps "no section" distinct from "All areas".
+                <option key={a || "none"} value={"#" + a}>
+                  {a || "Other requests"} ({byStatus.filter((r) => (r.section ?? "") === a && inCrit(r)).length})
+                </option>
+              ))}
+            </select>
+          )}
+          {filtered && (
+            <button className="btn btn-ghost btn-sm" onClick={() => (setCrit([]), setArea(""))}>
+              Clear filters
+            </button>
+          )}
+        </div>
+      )}
       <RfiImport open={importing} onClose={() => setImporting(false)} engagementId={id} existing={all} clients={clients} today={today} />
 
+      {filtered && items.length > 0 && (
+        <p className="px-1 text-xs muted">
+          {items.length} {show === "open" ? "pending " : ""}item{items.length === 1 ? "" : "s"}
+          {crit.length ? ` · ${crit.join(" or ")}` : ""}
+          {area ? ` · ${area.slice(1) || "Other requests"}` : ""}
+        </p>
+      )}
       {items.length ? (
-        sections.length > 1 ? (
+        sections.length > 1 || (filtered && !!sections[0]?.[0]) ? (
           <div className="space-y-4">
             {sections.map(([section, list]) => {
               const allIn = all.filter((r) => (r.section ?? "") === section);
@@ -521,7 +582,7 @@ function IrlTab({ snap, id }: TabProps) {
       ) : (
         <EmptyState
           icon="inbox"
-          title={all.length ? "Everything received 🎉" : "No RFI items yet"}
+          title={!all.length ? "No RFI items yet" : filtered && byStatus.length ? "Nothing matches these filters" : "Everything received 🎉"}
           hint={all.length ? undefined : "Import the RFI you sent to the client, or paste requests below, one per line."}
         />
       )}

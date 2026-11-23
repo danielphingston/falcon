@@ -19,6 +19,7 @@ import { act } from "../lib/act";
 import { useRecord, useTable } from "../lib/hooks";
 import { formDefs, RecordForm, toLocalInput, valuesToPatch, type FormValues } from "./forms";
 import { Icon } from "./Icon";
+import { StepInputs } from "./StepInputs";
 import { Checkbox, Pill, Sheet, statusTone } from "./ui";
 import { ReviewChecklist } from "./ReviewChecklist";
 import { ReviewPointsPanel } from "./ReviewPoints";
@@ -187,6 +188,7 @@ function Extras({ table, record }: { table: TableName; record: AnyEntity }) {
       {table === "workpapers" && <ReviewChecklist wp={record as EntityMap["workpapers"]} />}
       {table === "workpapers" && <ReviewPointsPanel wp={record as EntityMap["workpapers"]} />}
       {table === "infoRequests" && <RfiDetails item={record as EntityMap["infoRequests"]} />}
+      {table === "planItems" && <StepInputs item={record as EntityMap["planItems"]} />}
       {table === "planItems" && <PlanDetails item={record as EntityMap["planItems"]} />}
       {(table === "infoRequests" || table === "followUps") && (
         <ChasePanel table={table} record={record as EntityMap["infoRequests"] | EntityMap["followUps"]} />

@@ -279,6 +279,18 @@ export const planItemFields = z.object({
   /** What the sheet said at the last import, so a re-import only changes statuses the sheet changed. */
   sheetStatus: z.enum(planStatuses).optional(),
   sheetReviewStatus: z.enum(planReviewStatuses).optional(),
+  /**
+   * Inputs the step needs, once set by the user or the AI (otherwise the app
+   * guesses from the RFI): RFI items, extra inputs not on the RFI, or none.
+   */
+  inputs: z
+    .object({
+      rfiIds: z.array(z.string()).default([]),
+      extra: z.array(z.object({ name: z.string().trim().min(1), received: z.boolean().default(false) })).default([]),
+      none: z.boolean().optional(),
+      source: z.enum(["manual", "ai"]),
+    })
+    .optional(),
 });
 
 export const programItemStatuses = ["todo", "in_progress", "done", "na"] as const;

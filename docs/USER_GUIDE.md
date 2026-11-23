@@ -100,6 +100,7 @@ Statuses map as: Received → received, To be received / Pending / Shared → pe
 3. Tap **Copy pending table** and paste it into an email.
 4. Tap **Email** with the contact's first name to open a chase email with their pending items.
 5. Tap **Chased** on an item to log a chase. Tick **Mark received** when it arrives.
+6. Narrow the list with the filters under **Pending / All**. Tap one or more criticality chips (**High**, **Medium**, **Low**, from the RFI's criticality column) and pick an area from the **All areas** list. For example, Pending + High + Revenue shows only the open high-criticality revenue requests. Tap **Clear filters** to see everything again.
 
 ## Work plan (the engagement's audit programme)
 
@@ -112,9 +113,30 @@ Statuses map as: Received → received, To be received / Pending / Shared → pe
 3. Steps are grouped by phase, group (Balance Sheet, P&L…) and area. Lead-ins like "Review of -" or "ROC filings made during the year:" show over their steps. Steps the plan marks not applicable are greyed out.
 4. Tap a step's status chip to move it Open → WIP → Review pending → Closed, and its review chip (when the plan has one) Open → WIP → Closed. Tap the step to see everything else the plan said about it and add notes.
 5. Filters: **Open**, **To review**, **Done** and **Mine** (steps where you're the person responsible or the reviewer; set your name in Settings, initials like "JK" match too). Tap a person's chip to see only their steps.
-6. **Update from work plan** re-imports a newer copy: new steps are added and changes in the sheet come through, but statuses you changed in the app stay unless the sheet itself changed them.
+6. Steps waiting for review (marked **Review pending**, or executed but not yet reviewed in plans with a review column) also show on the **Review** page under **I review**, grouped by engagement. Those named for another reviewer are left out. Tap the review chip there to mark one reviewed.
+7. **Update from work plan** re-imports a newer copy: new steps are added and changes in the sheet come through, but statuses you changed in the app stay unless the sheet itself changed them.
 
 Other sheets in the file (time summary, risks and instructions…) are kept under **Plan details**.
+
+8. Ask the Assistant about anyone's load ("how many items does Asha have on Project Falcon?") or "what can we do now?". It reads the work plan, the RFI and the readiness below.
+
+## Readiness (what can be done with the inputs received)
+
+**What it's for:** seeing which open work plan steps the team can execute now with what the client has sent on the RFI, and which are blocked and why, with a list to send your manager.
+
+**How to**
+
+1. Import the engagement's work plan (Work plan tab) and its RFI (RFI tab). Then open **Readiness** (after Review in the menu) and pick the engagement, and a person if you like.
+2. The tiles show **Ready to execute**, **Blocked** and **Not linked yet**. Only open, applicable steps count.
+3. **Ready**: every input the step needs has been received (or it needs none). The received RFI items show under each step.
+4. **Blockers**: each step with what's missing, e.g. "RFI 6.1 Fixed assets register: Pending, 17d, with Ravi", or "GSTR-2B: Not on the RFI" when the step needs something nobody has requested yet. Switch to **By missing input** to see which missing item holds up the most steps; tap **Chased** to log a chase, or **Add to RFI** for an input that isn't on the RFI.
+5. **Export to Excel** downloads a workbook for your manager (Blockers, By missing input, Ready to execute). **Copy for email** copies a table to paste into an email; **Email manager** opens a draft with the summary.
+6. **Not linked**: the app couldn't tell what these steps need. Tap **Link inputs**, or **No input needed** for steps like planning or the report.
+
+**How steps are linked to the RFI:** the app matches each step's wording with the RFI items, understanding common audit terms (FAR = fixed asset register, BRS = bank reconciliation, BoA = books / TB / GL, 26AS, GSTR-2B, UBR/UER…). It's a good first pass, not perfect. To improve it:
+
+- **Link with AI** asks Gemini to link every open step of the engagement (and to list inputs missing from the RFI). One Undo reverses it.
+- Tap any step and change **Inputs needed**: search the RFI to add an item, remove one with ×, add an input that isn't on the RFI (tap its chip when it comes in), or tick **No client input needed**. Your changes are kept and never overwritten by the AI; **Reset** goes back to the automatic match.
 
 ## Work papers and review points
 

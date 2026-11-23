@@ -4,6 +4,7 @@ import {
   labels,
   logChase,
   relativeDay,
+  rfiCriticality,
   setTaskDone,
   update,
   type Engagement,
@@ -128,7 +129,7 @@ export function IrlRow({ item, l, today, hideEngagement }: { item: InfoRequest; 
         </Meta>
       </div>
       {(() => {
-        const c = item.fields?.find((f) => /critical|priority/i.test(f.label))?.value;
+        const c = rfiCriticality(item);
         return c && open ? <Pill tone={/high|critical/i.test(c) ? "red" : /medium/i.test(c) ? "amber" : "slate"}>{c}</Pill> : null;
       })()}
       {item.status === "partial" && <Pill tone="blue">Partial</Pill>}

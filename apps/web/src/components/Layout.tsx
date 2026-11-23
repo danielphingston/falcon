@@ -26,6 +26,7 @@ const nav: { to: string; label: string; icon: IconName }[] = [
   { to: "/engagements", label: "Engagements", icon: "briefcase" },
   { to: "/followups", label: "Follow-ups", icon: "inbox" },
   { to: "/review", label: "Review", icon: "review" },
+  { to: "/readiness", label: "Readiness", icon: "check" },
   { to: "/chat", label: "Assistant", icon: "sparkles" },
   { to: "/time", label: "Time & focus", icon: "clock" },
   { to: "/reports", label: "Reports", icon: "flag" },
@@ -33,7 +34,7 @@ const nav: { to: string; label: string; icon: IconName }[] = [
   { to: "/people", label: "People", icon: "users" },
   { to: "/settings", label: "Settings", icon: "settings" },
 ];
-const moreRoutes = ["/more", "/review", "/chat", "/time", "/reports", "/progress", "/people", "/settings"];
+const moreRoutes = ["/more", "/review", "/readiness", "/chat", "/time", "/reports", "/progress", "/people", "/settings"];
 /** Phone tab bar: the first four plus More. */
 const phoneTabs = ["/", "/calendar", "/engagements", "/followups"];
 

@@ -1,6 +1,6 @@
 // Invented work plans shaped like the firm's two layouts. Never put real client plans here.
 import { describe, expect, it } from "vitest";
-import { MemoryStore, applyPlan, create, update, isMe, parsePlan, planPlanImport, planProgress, planStatus, type Ctx } from "../src";
+import { MemoryStore, applyPlan, create, update, isMe, namedIn, runTool, parsePlan, planPlanImport, planProgress, planReviewQueue, planStatus, type Ctx, type PlanItem } from "../src";
 
 const iaPlan = [
   {
@@ -142,6 +142,42 @@ describe("work plans", () => {
     expect(plan3.update.map((u) => u.changes)).toEqual([["status → wip"]]);
     await applyPlan(ctx, plan3, { engagementId: eng.id, parsed: p3, file: "plan v3.xlsx" });
     expect(await store.get("planItems", hr.id)).toMatchObject({ status: "wip", reviewStatus: "wip", sheetStatus: "wip" });
+  });
+
+  it("lists steps waiting for my review", () => {
+    const p = parsePlan(iaPlan)!;
+    const items = p.steps.map((s, i) => ({ ...s, id: String(i), engagementId: "e", createdAt: "", updatedAt: "" })) as never as PlanItem[];
+    const eng = [{ id: "e", planInfo: { hasReview: true } }];
+    // Executed + review not closed: "MIS vs books" (review WIP, reviewer AB).
+    expect(planReviewQueue(items, eng, new Set(["e"]), "Anil Bose").map((i) => i.text)).toEqual(["MIS vs books"]);
+    expect(planReviewQueue(items, eng, new Set(["e"]), "Cara")).toHaveLength(0);
+    expect(planReviewQueue(items, eng, new Set(), "Anil Bose")).toHaveLength(0);
+    // Plans without a review column: only "Review pending" steps.
+    items[0].status = "review";
+    expect(planReviewQueue(items, [{ id: "e" }], new Set(["e"]), "Me").map((i) => i.text)).toEqual(["Understand the HR process"]);
+  });
+
+  it("answers 'how much does Dev have' through the assistant's tools", async () => {
+    const store = new MemoryStore();
+    const ctx: Ctx = { store, by: "app" };
+    const eng = (await create(ctx, "engagements", { name: "Widget Co" })).record;
+    const p = parsePlan(iaPlan)!;
+    await applyPlan(ctx, planPlanImport(p, []), { engagementId: eng.id, parsed: p, file: "plan.xlsx" });
+    // Dev isn't in the People list: the plan's names still count.
+    const r = await runTool(ctx, "get_workload", { person: "dev", engagement: "widget" });
+    expect(r.ok).toBe(true);
+    const out = r.result as { summary: Record<string, unknown>; workPlanSteps: { text: string }[] };
+    expect(out.summary).toMatchObject({ workPlanStepsToComplete: 2, workPlanStepsByStatus: { open: 1, wip: 1, review: 0, closed: 0 } });
+    expect(out.workPlanSteps.map((s) => s.text)).toEqual(["Check credit terms", "Ageing as at cut-off"]);
+    // Cara reviews the receivables steps; one is executed in the edited sheet.
+    const plan = await runTool(ctx, "get_work_plan", { engagement: "widget", person: "Dev" });
+    const step = (plan.result as { steps: { id: string; text: string }[] }).steps[0];
+    expect((await runTool(ctx, "update_plan_step", { id: step.id, status: "closed" })).ok).toBe(true);
+    const cara = (await runTool(ctx, "get_workload", { person: "Cara" })).result as { summary: Record<string, number> };
+    expect(cara.summary.workPlanStepsWaitingForTheirReview).toBe(1);
+    expect(namedIn("Ravi/Dev", "Dev Rao")).toBe(true);
+    expect(namedIn("Asha & Mira", "Mira")).toBe(true);
+    expect(namedIn("Team", "Mira")).toBe(false);
   });
 
   it("recognises the user by name or initials", () => {

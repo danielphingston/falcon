@@ -22,7 +22,9 @@ import { computeToday, titleOf } from "./today";
 import { BADGES, chaseStreak, levelFor, pointEvents, ringFor, ringStreak } from "./game";
 import { matchName, nameKey } from "./teamImport";
 import { AREA_IDS, areaLabel, programmeView, type AreaId } from "./audit";
-import { programItemStatuses, reviewOutcomes } from "./schema";
+import { planReviewStatuses, planStatuses, programItemStatuses, reviewOutcomes } from "./schema";
+import { namedIn, planAwaitingReview, planProgress } from "./workplan";
+import { blockerText, engagementReadiness } from "./readiness";
 import { periodReport, shiftWeek, timesheet, timesheetText, weekDays, weekStart } from "./time";
 import { loadSnapshot, type Store } from "./store";
 import {
@@ -167,7 +169,7 @@ export const tools = [
   tool({
     name: "search",
     kind: "read",
-    description: "Find records by text across engagements, tasks, work papers, review points, IRL items, follow-ups and people. Returns ids for use with other tools.",
+    description: "Find records by text across engagements, tasks, work papers, review points, RFI items, work plan steps, follow-ups and people. Returns ids for use with other tools.",
     input: z.object({
       query: z.string().describe("Text to look for; empty string lists everything in the chosen tables"),
       tables: z.array(z.enum(tableNames as [TableName, ...TableName[]])).optional(),
@@ -622,6 +624,166 @@ export const tools = [
       const assigneeId = assignee === undefined ? undefined : ((await resolvePerson(ctx, assignee, "team"))?.id ?? null);
       const r = await update(ctx, "programItems", id, { ...rest, ...(assignee === undefined ? {} : { assigneeId }) });
       return { updated: brief("programItems", r.record) };
+    },
+  }),
+
+  tool({
+    name: "get_workload",
+    kind: "read",
+    description:
+      "Everything one person has to complete (or 'me'), optionally on one engagement: work plan steps where they are the person responsible, steps waiting for their review, work papers they prepare or review, tasks, review points assigned to them and work-programme procedures. Use for 'how many items / work papers / steps does X have', 'what is pending with X'.",
+    input: z.object({
+      person: z.string().describe("Name, first name or initials as used in the work plan, or 'me'"),
+      engagement: z.string().optional(),
+      includeDone: z.boolean().optional().describe("Also list finished items"),
+    }),
+    async run(ctx, { person, engagement, includeDone }) {
+      const snap = await loadSnapshot(ctx.store);
+      const settings = await ctx.store.getSettings();
+      const e = engagement ? await resolveEngagement(ctx.store, engagement) : undefined;
+      const isMeRef = ["me", "myself", "i"].includes(norm(person)) || (settings.myName !== "Me" && nameKey(settings.myName) === nameKey(person));
+      // People in the People list are linked by id; work plan cells hold the name as typed in the sheet.
+      let p: Person | undefined;
+      if (!isMeRef) p = await resolvePerson(ctx, person).catch(() => undefined);
+      const fullName = isMeRef ? settings.myName : (p?.name ?? person);
+      const names = [fullName, person];
+      const named = (cell: string | undefined) => names.some((n) => n && n !== "Me" && namedIn(cell, n));
+      const live = new Set(snap.engagements.filter((x) => !x.deleted && x.status !== "closed").map((x) => x.id));
+      const inScope = (id: string | undefined) => (e ? id === e.id : !!id && live.has(id));
+      const engName = new Map(snap.engagements.map((x) => [x.id, x.name]));
+      const hasReview = new Map(snap.engagements.map((x) => [x.id, !!x.planInfo?.hasReview]));
+
+      const steps = snap.planItems.filter((i) => !i.deleted && i.applicable && inScope(i.engagementId)).sort((a, b) => a.engagementId.localeCompare(b.engagementId) || a.order - b.order);
+      const mySteps = steps.filter((i) => (p && i.assigneeId === p.id) || named(i.assignee));
+      const openSteps = mySteps.filter((i) => i.status !== "closed");
+      const toReview = steps.filter((i) => ((p && i.reviewerId === p.id) || named(i.reviewer)) && planAwaitingReview(i, hasReview.get(i.engagementId) ?? false));
+      const wps = snap.workpapers.filter((w) => !w.deleted && inScope(w.engagementId));
+      const wpDone = (w: (typeof wps)[number]) => w.status === "final" || w.status === "cleared";
+      const prepares = wps.filter((w) => (isMeRef ? w.myRole === "preparer" : p && w.preparerId === p.id));
+      const reviews = wps.filter((w) => (isMeRef ? w.myRole === "reviewer" : p && w.reviewerId === p.id));
+      const tasks = snap.tasks.filter((t) => !t.deleted && (!e || t.engagementId === e.id) && (isMeRef ? !t.assigneeId : p && t.assigneeId === p.id));
+      const points = snap.reviewPoints.filter((r) => !r.deleted && inScope(r.engagementId) && p && r.assignedToId === p.id);
+      const procs = snap.programItems.filter((i) => !i.deleted && inScope(i.engagementId) && p && i.assigneeId === p.id);
+      const pick = <T,>(list: T[], done: (x: T) => boolean) => (includeDone ? list : list.filter((x) => !done(x)));
+
+      return {
+        person: fullName,
+        inPeopleList: isMeRef || !!p,
+        engagement: e?.name ?? "all live engagements",
+        summary: {
+          workPlanStepsToComplete: openSteps.length,
+          workPlanStepsTotal: mySteps.length,
+          workPlanStepsByStatus: Object.fromEntries(["open", "wip", "review", "closed"].map((s) => [s, mySteps.filter((i) => i.status === s).length])),
+          workPlanStepsWaitingForTheirReview: toReview.length,
+          workpapersToPrepare: prepares.filter((w) => !wpDone(w)).length,
+          workpapersToReview: reviews.filter((w) => !wpDone(w)).length,
+          openTasks: tasks.filter((t) => t.status !== "done").length,
+          openReviewPoints: points.filter((r) => r.status !== "cleared").length,
+          openProgrammeProcedures: procs.filter((i) => i.status !== "done" && i.status !== "na").length,
+        },
+        workPlanSteps: pick(mySteps, (i) => i.status === "closed").map((i) => ({ id: i.id, engagement: engName.get(i.engagementId), number: i.number, area: i.area, text: i.text.split("\n")[0], status: i.status, reviewStatus: i.reviewStatus, sharedWith: i.assignee })),
+        stepsToReview: toReview.map((i) => ({ id: i.id, engagement: engName.get(i.engagementId), number: i.number, area: i.area, text: i.text.split("\n")[0], by: i.assignee })),
+        workpapers: pick([...new Set([...prepares, ...reviews])], wpDone).map((w) => ({ id: w.id, ref: w.ref, title: w.title, engagement: engName.get(w.engagementId), status: w.status, role: prepares.includes(w) ? "prepares" : "reviews" })),
+        tasks: pick(tasks, (t) => t.status === "done").map((t) => ({ id: t.id, title: t.title, due: t.due, status: t.status })),
+        reviewPoints: pick(points, (r) => r.status === "cleared").map((r) => ({ id: r.id, text: r.text, status: r.status })),
+      };
+    },
+  }),
+
+  tool({
+    name: "get_work_plan",
+    kind: "read",
+    description:
+      "An engagement's imported work plan / audit programme (the Work plan tab): progress, steps per person, and the steps with number, area, procedure, person responsible, execution status (open / wip / review = review pending / closed), review status, reviewer, risk and hours. Filter by person, status or area.",
+    input: z.object({
+      engagement: z.string(),
+      person: z.string().optional().describe("Only steps this person is responsible for or reviews"),
+      status: z.enum(planStatuses).optional(),
+      area: z.string().optional().describe("Area or phase text, e.g. 'Payroll' or 'Balance Sheet'"),
+    }),
+    async run(ctx, { engagement, person, status, area }) {
+      const e = await resolveEngagement(ctx.store, engagement);
+      const items = (await ctx.store.list("planItems")).filter((i) => !i.deleted && i.engagementId === e.id).sort((a, b) => a.order - b.order);
+      if (!items.length) return { engagement: e.name, plan: "No work plan imported yet: ask the user to import it in the engagement's Work plan tab." };
+      const pr = planProgress(items);
+      const full = person ? ((await resolvePerson(ctx, person).catch(() => undefined))?.name ?? person) : "";
+      const hit = items.filter(
+        (i) =>
+          (!person || namedIn(i.assignee, full) || namedIn(i.reviewer, full) || namedIn(i.assignee, person)) &&
+          (!status || i.status === status) &&
+          (!area || [i.area, i.phase, i.group].some((x) => x && norm(x).includes(norm(area)))),
+      );
+      return {
+        engagement: e.name,
+        file: e.planInfo?.file,
+        progress: { steps: pr.total, applicable: pr.applicable, executed: pr.closed, reviewed: e.planInfo?.hasReview ? pr.reviewed : undefined, budgetHours: pr.budget, actualHours: pr.actual },
+        byPerson: pr.byPerson.map((x) => ({ name: x.name, steps: x.steps, closed: x.closed, open: x.steps - x.closed })),
+        matching: hit.length,
+        steps: hit.slice(0, 120).map((i) => ({
+          id: i.id,
+          number: i.number,
+          phase: i.phase,
+          area: i.area,
+          text: i.text,
+          assignee: i.assignee,
+          status: i.status,
+          reviewStatus: i.reviewStatus,
+          reviewer: i.reviewer,
+          risk: i.risk,
+          applicable: i.applicable,
+          budgetHours: i.budgetHours,
+          actualHours: i.actualHours,
+          notes: i.notes,
+        })),
+      };
+    },
+  }),
+
+  tool({
+    name: "get_readiness",
+    kind: "read",
+    description:
+      "Which open work plan steps can be executed now with the inputs received on the RFI, which are blocked (and by which missing RFI items or inputs not on the RFI), and which aren't linked to any input. Optionally for one person. Use for 'what can we do now', 'what's blocked and why', 'what is holding up Asha'.",
+    input: z.object({
+      engagement: z.string(),
+      person: z.string().optional().describe("Only steps this person is responsible for"),
+    }),
+    async run(ctx, { engagement, person }) {
+      const snap = await loadSnapshot(ctx.store);
+      const e = await resolveEngagement(ctx.store, engagement);
+      const full = person ? ((await resolvePerson(ctx, person).catch(() => undefined))?.name ?? person) : "";
+      const plan = snap.planItems.filter((i) => !person || namedIn(i.assignee, full) || namedIn(i.assignee, person));
+      const names = new Map(snap.people.map((p) => [p.id, p.name]));
+      const r = engagementReadiness(e, plan, snap.infoRequests, todayISO(ctx.now?.()), (id) => names.get(id));
+      if (!r.steps.length) return { engagement: e.name, message: "No open work plan steps (or no work plan imported)." };
+      const line = (s: (typeof r.steps)[number]) => ({ id: s.step.id, number: s.step.number, area: s.step.area, text: s.step.text.split("\n")[0], assignee: s.step.assignee });
+      return {
+        engagement: e.name,
+        counts: { ready: r.ready.length, blocked: r.blocked.length, notLinked: r.unlinked.length },
+        ready: r.ready.map((s) => ({ ...line(s), inputs: s.received.map((x) => (x.rfiNumber ? `RFI ${x.rfiNumber} ` : "") + x.input) })),
+        blocked: r.blocked.map((s) => ({ ...line(s), because: s.blockers.map(blockerText) })),
+        holdingUp: r.byInput.slice(0, 20).map((g) => ({ input: blockerText(g.blocker), steps: g.steps.map((s) => s.number) })),
+        notLinked: r.unlinked.map(line),
+      };
+    },
+  }),
+
+  tool({
+    name: "update_plan_step",
+    kind: "write",
+    description: "Update a work plan step (ids from get_work_plan or get_workload): execution status, review status, notes, actual hours or person responsible.",
+    input: z.object({
+      id: z.string(),
+      status: z.enum(planStatuses).optional(),
+      reviewStatus: z.enum(planReviewStatuses).optional(),
+      notes: z.string().optional(),
+      actualHours: z.number().min(0).optional(),
+      assignee: z.string().optional().describe("Name as it should show on the plan"),
+    }),
+    async run(ctx, { id, assignee, ...rest }) {
+      const p = assignee ? await resolvePerson(ctx, assignee).catch(() => undefined) : undefined;
+      const r = await update(ctx, "planItems", id, { ...rest, ...(assignee === undefined ? {} : { assignee, assigneeId: p?.id }) });
+      return { updated: brief("planItems", r.record) };
     },
   }),
 
