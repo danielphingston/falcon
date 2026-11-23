@@ -50,6 +50,18 @@ export const engagementFields = z.object({
   notes: z.string().optional(),
   /** Set automatically when the engagement is closed. */
   closedAt: isoDateTime.optional(),
+  /** The last RFI imported: its title block, notes to the client, section notes and columns (annexures excluded). */
+  rfiInfo: z
+    .object({
+      file: z.string(),
+      sheet: z.string(),
+      title: z.array(z.string()).default([]),
+      notes: z.array(z.string()).default([]),
+      sectionNotes: z.record(z.string(), z.string()).default({}),
+      columns: z.array(z.string()).default([]),
+      importedAt: isoDateTime,
+    })
+    .optional(),
 });
 
 // ---------- Workstreams ----------
@@ -156,6 +168,10 @@ export const infoRequestFields = z.object({
   responsible: z.string().optional(),
   /** The client's (auditee's) comments from the RFI. */
   clientComment: z.string().optional(),
+  /** Sub-heading within the section, e.g. "Bank" or "Employee Statutory Dues › ESIC". */
+  subsection: z.string().optional(),
+  /** Every other RFI column for this request, with the sheet's own headers ("Criticality", "Remarks - Firm"…). */
+  fields: z.array(z.object({ label: z.string(), value: z.string(), link: z.string().optional() })).optional(),
 });
 
 // ---------- Follow-ups ----------

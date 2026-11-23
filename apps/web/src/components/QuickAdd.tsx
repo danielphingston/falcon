@@ -5,7 +5,7 @@ import { act } from "../lib/act";
 import { useSettings, useTable, useToday } from "../lib/hooks";
 import { Icon } from "./Icon";
 
-const kindLabel = { task: "Task", followup: "Follow-up", irl: "IRL item" } as const;
+const kindLabel = { task: "Task", followup: "Follow-up", irl: "RFI item" } as const;
 
 /**
  * One-line capture. Syntax: @person #engagement !date !! (high priority).
@@ -107,7 +107,7 @@ export function QuickAdd({ defaultEngagementId, autoFocus }: { defaultEngagement
                       {c.label}
                     </motion.span>
                   ))}
-                  {needsEngagement && <span className="text-xs text-rose-600">IRL items need an #engagement</span>}
+                  {needsEngagement && <span className="text-xs text-rose-600">RFI items need an #engagement</span>}
                 </>
               ) : (
                 <span className="text-xs muted">

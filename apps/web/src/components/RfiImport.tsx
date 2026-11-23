@@ -68,6 +68,8 @@ export function RfiImport({
           today,
           requestedFromId: from || undefined,
           resolvePerson: (name) => matchName(name, clients)?.id,
+          file,
+          parsed: parsed ?? undefined,
         }),
     );
     if (res || n === 0) close();
@@ -137,6 +139,12 @@ export function RfiImport({
                 <Pill tone="green">{statusCount("received")} received</Pill>
                 {statusCount("na") > 0 && <Pill>{statusCount("na")} n.a.</Pill>}
               </div>
+              {parsed.info.title.length > 0 && <p className="mt-2 text-xs">{parsed.info.title.join(" · ")}</p>}
+              <p className="mt-1 text-xs muted">
+                {parsed.info.columns.length} columns captured
+                {parsed.info.notes.length ? ` · ${parsed.info.notes.length} notes to the client` : ""}
+                {Object.keys(parsed.info.sectionNotes).length ? ` · ${Object.keys(parsed.info.sectionNotes).length} section notes` : ""}
+              </p>
               {parsed.warnings.map((w) => (
                 <p key={w} className="mt-1 text-xs text-amber-600">
                   {w}

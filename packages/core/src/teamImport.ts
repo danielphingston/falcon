@@ -13,6 +13,8 @@ export interface SheetData {
   name: string;
   /** Cell text by row, then column (empty string for blank cells). */
   rows: string[][];
+  /** Hyperlinks on cells, keyed "row,col" (0-based), e.g. a "Folder link" cell's URL. */
+  links?: Record<string, string>;
 }
 
 export interface AllocationAssignment {
