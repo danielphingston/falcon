@@ -28,7 +28,7 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 
-const VERSION = "0.1.0";
+const VERSION = "0.1.1";
 const PROTOCOLS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
 const argv = process.argv.slice(2);
@@ -49,6 +49,7 @@ const ORIGINS = new Set([
 const DIR = process.env.FALCON_BRIDGE_DIR || path.join(os.homedir(), ".falcon-bridge");
 const CALL_TIMEOUT = Number(process.env.FALCON_CALL_TIMEOUT_MS || 120_000);
 const LIST_TIMEOUT = 8_000;
+const POLL_MS = Number(process.env.FALCON_POLL_MS || 10_000);
 
 const log = (...a) => process.stderr.write(`[falcon-bridge] ${a.join(" ")}\n`);
 
@@ -61,7 +62,24 @@ function codeOk(given) {
   return CODE.length >= 12 && a.length === b.length && timingSafeEqual(a, b);
 }
 
-// ---------- Cache: the last tool list, so clients see tools before Falcon is open ----------
+// ---------- Tool lists for before Falcon is open ----------
+//
+// MCP apps ask for the tool list once, when they start, and don't all reload
+// it later. So the bridge must offer the full list even if Falcon isn't open
+// yet. In order: Falcon's live list, the last list Falcon sent (cache), and
+// the list this release was built with (bundled).
+
+/** Filled in by scripts/pack.mjs with Falcon's tool list; null in the source tree. */
+const BUNDLED_TOOLS = null;
+
+function bundledTools() {
+  if (BUNDLED_TOOLS) return BUNDLED_TOOLS;
+  try {
+    return JSON.parse(fs.readFileSync(new URL("./tools.snapshot.json", import.meta.url), "utf8")).tools;
+  } catch {
+    return [];
+  }
+}
 
 const cacheFile = path.join(DIR, "tools.json");
 function readCache() {
@@ -289,6 +307,9 @@ const notConnected = () =>
     ? "Falcon isn't connected. Open Falcon in your browser on this computer and turn on Settings → AI connections (same pairing code as this bridge)."
     : "The bridge has no pairing code. Copy the code from Falcon (Settings → AI connections) into the bridge's settings in your AI app, then restart it.";
 
+/** How many tools this client was last given (to spot a session stuck with only the status tool). */
+let toolsGiven = 0;
+
 async function listTools() {
   try {
     const r = await ask({ type: "list" }, LIST_TIMEOUT);
@@ -299,30 +320,47 @@ async function listTools() {
   } catch (e) {
     if (e.code !== "NOT_CONNECTED") log("tools/list:", e.message);
   }
-  return readCache()?.tools ?? [];
+  const cached = readCache()?.tools;
+  return Array.isArray(cached) && cached.length ? cached : bundledTools();
+}
+
+/** Whether Falcon is connected, asked of the hub when this process isn't it. */
+async function appConnected() {
+  if (isHub) return apps.length > 0;
+  try {
+    const r = await new Promise((resolve, reject) =>
+      http
+        .get({ host: "127.0.0.1", port: PORT, path: "/status", headers: { "X-Falcon-Code": CODE }, timeout: 3000 }, (res) => {
+          const c = [];
+          res.on("data", (d) => c.push(d));
+          res.on("end", () => {
+            try {
+              resolve(JSON.parse(Buffer.concat(c).toString() || "{}"));
+            } catch (e) {
+              reject(e);
+            }
+          });
+        })
+        .on("error", reject)
+        .on("timeout", function () {
+          this.destroy(new Error("timeout"));
+        }),
+    );
+    return !!r.appConnected;
+  } catch {
+    return false;
+  }
 }
 
 async function callTool(name, args) {
   if (name === "falcon_status") {
-    let connected = false;
-    try {
-      if (isHub) connected = apps.length > 0;
-      else {
-        const r = await new Promise((resolve, reject) =>
-          http
-            .get({ host: "127.0.0.1", port: PORT, path: "/status", headers: { "X-Falcon-Code": CODE }, timeout: 3000 }, (res) => {
-              const c = [];
-              res.on("data", (d) => c.push(d));
-              res.on("end", () => resolve(JSON.parse(Buffer.concat(c).toString() || "{}")));
-            })
-            .on("error", reject),
-        );
-        connected = !!r.appConnected;
-      }
-    } catch {
-      /* not connected */
-    }
-    return { content: [{ type: "text", text: connected ? "Falcon is open and connected." : notConnected() }] };
+    const connected = await appConnected();
+    const text = !connected
+      ? notConnected()
+      : toolsGiven <= 1
+        ? "Falcon is open and connected, but this session started before Falcon's tools were available, so you only have this status tool. Ask the user to start a new chat (or restart the AI app) to load Falcon's tools."
+        : "Falcon is open and connected.";
+    return { content: [{ type: "text", text }] };
   }
   try {
     const r = await ask({ type: "call", name, args: args ?? {}, session }, CALL_TIMEOUT);
@@ -356,8 +394,11 @@ async function handle(msg) {
       return;
     case "ping":
       return isRequest && reply(id, {});
-    case "tools/list":
-      return reply(id, { tools: [...(await listTools()), STATUS_TOOL] });
+    case "tools/list": {
+      const tools = [...(await listTools()), STATUS_TOOL];
+      toolsGiven = tools.length;
+      return reply(id, { tools });
+    }
     case "tools/call":
       return reply(id, await callTool(params?.name, params?.arguments));
     default:
@@ -379,6 +420,17 @@ async function main() {
     await listTools();
     if (initialized) out({ jsonrpc: "2.0", method: "notifications/tools/list_changed" });
   };
+
+  // A second AI app relays through the first bridge, so it doesn't see Falcon connect:
+  // check the hub now and then, and tell its client when Falcon comes online.
+  let wasConnected = await appConnected();
+  const poll = setInterval(async () => {
+    if (isHub) return;
+    const now = await appConnected();
+    if (now && !wasConnected) await onAppConnected();
+    wasConnected = now;
+  }, POLL_MS);
+  poll.unref();
 
   const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
   const inflight = new Set();

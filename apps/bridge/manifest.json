@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "falcon-bridge",
   "display_name": "Falcon",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Use Falcon (work tracker for audit and due diligence) from Claude: engagements, work papers, review points, RFI, work plans and readiness. Falcon must be open in your browser.",
   "long_description": "Relays tool calls to the Falcon app open in your browser on this computer, so Claude can do everything Falcon's in-app assistant can. The bridge stores nothing and runs on this computer only (127.0.0.1). Every change shows in Falcon under Settings → AI connections, with Undo.",
   "author": { "name": "Falcon" },

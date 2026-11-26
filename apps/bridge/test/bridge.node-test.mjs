@@ -1,7 +1,7 @@
 // Drives the bridge the way an MCP client and the Falcon tab do: a real
 // bridge process on a spare port, a fake Falcon tab over HTTP.
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
@@ -10,7 +10,10 @@ import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
-const SERVER = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../server/index.mjs");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const SERVER = path.join(ROOT, "server/index.mjs");
+/** Tools the bridge ships with (kept in step with the app by a core test). */
+const BUNDLED_COUNT = JSON.parse(fs.readFileSync(path.join(ROOT, "server/tools.snapshot.json"), "utf8")).tools.length;
 const CODE = "TEST-CODE-1234-5678";
 const ORIGIN = "http://falcon.test";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -24,8 +27,8 @@ const freePort = () =>
   });
 
 /** A bridge process speaking MCP over stdio. */
-function startBridge(port, dir, extraEnv = {}) {
-  const child = spawn(process.execPath, [SERVER], {
+function startBridge(port, dir, extraEnv = {}, server = SERVER) {
+  const child = spawn(process.execPath, [server], {
     env: { ...process.env, FALCON_PORT: String(port), FALCON_PAIRING_CODE: CODE, FALCON_ORIGINS: ORIGIN, FALCON_BRIDGE_DIR: dir, FALCON_CALL_TIMEOUT_MS: "4000", ...extraEnv },
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -144,9 +147,14 @@ describe("falcon bridge", () => {
     assert.ok(r.result.capabilities.tools);
   });
 
-  it("says Falcon isn't connected when the app isn't open", async () => {
+  it("offers every Falcon tool even before Falcon is open (fresh install, nothing cached)", async () => {
     const list = await hub.request("tools/list", {});
-    assert.deepEqual(list.result.tools.map((t) => t.name), ["falcon_status"]);
+    const names = list.result.tools.map((t) => t.name);
+    assert.equal(names.length, BUNDLED_COUNT + 1, "the built-in list plus the status tool");
+    assert.ok(names.includes("get_readiness") && names.includes("set_step_inputs") && names.at(-1) === "falcon_status");
+  });
+
+  it("says Falcon isn't connected when the app isn't open", async () => {
     const call = await hub.request("tools/call", { name: "get_today", arguments: {} });
     assert.equal(call.result.isError, true);
     assert.match(call.result.content[0].text, /isn't connected/);
@@ -207,6 +215,52 @@ describe("falcon bridge", () => {
   it("reports unknown methods", async () => {
     const r = await hub.request("resources/list", {});
     assert.equal(r.error.code, -32601);
+  });
+});
+
+describe("AI app started before Falcon", () => {
+  it("a second AI app is told when Falcon connects, and its status explains a stale session", async () => {
+    const port = await freePort();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "falcon-bridge-"));
+    const first = startBridge(port, dir);
+    await first.ready;
+    const second = startBridge(port, dir, { FALCON_POLL_MS: "200" });
+    await second.ready;
+    assert.match(second.stderr(), /relaying/);
+    await initialize(second, "claude-code");
+    // Before any tools/list in this session, Falcon connects.
+    const app = startApp(port);
+    await app.connected;
+    await sleep(1200);
+    assert.ok(second.notes.some((n) => n.method === "notifications/tools/list_changed"), "the second app hears that tools changed");
+    const status = await second.request("tools/call", { name: "falcon_status", arguments: {} });
+    assert.match(status.result.content[0].text, /start a new chat/, "a session that never loaded the tools is told to start a new one");
+    await second.request("tools/list", {});
+    const after = await second.request("tools/call", { name: "falcon_status", arguments: {} });
+    assert.equal(after.result.content[0].text, "Falcon is open and connected.");
+    app.close();
+    second.child.kill();
+    first.child.kill();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("released files", () => {
+  it("the packed bridge has the tool list built in and works on its own", async () => {
+    const packed = spawnSync(process.execPath, [path.join(ROOT, "scripts/pack.mjs")], { encoding: "utf8" });
+    assert.equal(packed.status, 0, packed.stderr);
+    // Run the single-file release from an empty folder, so nothing next to it can help.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "falcon-release-"));
+    const file = path.join(dir, "falcon-bridge.mjs");
+    fs.copyFileSync(path.join(ROOT, "dist/falcon-bridge.mjs"), file);
+    const port = await freePort();
+    const b = startBridge(port, path.join(dir, "cache"), {}, file);
+    await b.ready;
+    await initialize(b);
+    const list = await b.request("tools/list", {});
+    assert.equal(list.result.tools.length, BUNDLED_COUNT + 1);
+    b.child.kill();
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });
 
