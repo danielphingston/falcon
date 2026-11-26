@@ -118,7 +118,8 @@ Statuses map as: Received → received, To be received / Pending / Shared → pe
 
 Other sheets in the file (time summary, risks and instructions…) are kept under **Plan details**.
 
-8. Ask the Assistant about anyone's load ("how many items does Asha have on Project Falcon?") or "what can we do now?". It reads the work plan, the RFI and the readiness below.
+8. **Names that aren't matched:** if the plan names someone Falcon can't place (e.g. a first name not in People), a card lists them with how many steps each has. Choose who each is once: you, a team member, a new person, or "not a person" (like Team). It's saved as another name for that person (see People → Also written as, or Settings → You → Also written as for yourself), so their steps count in their workload on every engagement. Joint owners like "A/B" count for both, and your initials (e.g. JK) count as you.
+9. Ask the Assistant about anyone's load ("how many items does Asha have on Project Falcon?") or "what can we do now?". It reads the work plan, the RFI and the readiness below.
 
 ## Readiness (what can be done with the inputs received)
 
@@ -252,6 +253,17 @@ Connect Google in **Settings** to see your Google events here too.
 
 Use **New chat** to start again. Chat history stays on this device.
 
+## Inbox (changes waiting for you)
+
+**What it's for:** nothing Claude or the Assistant does changes your data until you say so. Their changes arrive here as proposals.
+
+1. **Inbox** (in the menu, with a count) lists each proposal: who proposed it, the engagement, and exactly what would change (old → new, per record).
+2. **Accept** applies it; **Reject** drops it. **Accept all** applies each one separately: any whose record you changed since (stale) or deleted (void) are skipped and listed under **Decided** with the reason.
+3. Accepted changes can be undone from the toast or under **Decided**; undoing puts the proposal back in Pending.
+4. In the Assistant chat, each proposed change shows **Waiting for you** with Accept / Reject right there.
+5. Settings → AI assistant → **AI changes**: tick what may apply straight away without the Inbox (moving task dates/times, logging chases). Everything else always waits.
+6. Claude can see what's waiting (`list_proposals`) but can never approve.
+
 ## AI connections (use Falcon from Claude)
 
 **What it's for:** asking Claude Desktop, Claude Code or another MCP app about your work and letting it make changes, with the same abilities as the Assistant. Every change is logged in Falcon, per session, with Undo.
@@ -272,6 +284,10 @@ Use **New chat** to start again. Chat history stays on this device.
 - What the AI reads goes to that AI service as part of your chat. Firm checklists are never shared. The web and phone versions of Claude can't use it.
 
 ## Settings
+
+**Data → Clean up** lists records that belong to engagements that no longer exist (for example RFI copies imported under an engagement that was later deleted). Closed and on-hold engagements are never counted. Tick the groups to remove and confirm; they're deleted on every synced device, with Undo straight after.
+
+**You → Also written as**: the initials or short names sheets use for you (e.g. JK).
 
 **Google sync & Calendar:** tap **Connect Google account**. Then tick what goes to your Google Calendar: **Reminders → Calendar**, **Key dates → Calendar**, **Due dates → Calendar**. Use **Sync now** to sync straight away.
 

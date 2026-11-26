@@ -404,12 +404,18 @@ export function planAwaitingReview(i: PlanItem, hasReview: boolean): boolean {
  * Steps waiting for my review across live engagements: reviewer is me, or the
  * step names no reviewer (or my name isn't set yet, so I can't tell).
  */
-export function planReviewQueue(items: PlanItem[], engagements: { id: string; planInfo?: { hasReview?: boolean } }[], live: Set<string>, myName: string): PlanItem[] {
+export function planReviewQueue(
+  items: PlanItem[],
+  engagements: { id: string; planInfo?: { hasReview?: boolean } }[],
+  live: Set<string>,
+  myName: string,
+  /** Resolves a reviewer cell to "me" (names, initials, aliases); defaults to matching my name. */
+  isMine?: (cell: string | undefined) => boolean,
+): PlanItem[] {
   const hasReview = new Map(engagements.map((e) => [e.id, !!e.planInfo?.hasReview]));
   const known = !!myName && myName !== "Me";
-  return items.filter(
-    (i) => live.has(i.engagementId) && planAwaitingReview(i, hasReview.get(i.engagementId) ?? false) && (!known || !i.reviewer || isMe(i.reviewer, myName)),
-  );
+  const mine = isMine ?? ((cell: string | undefined) => isMe(cell, myName));
+  return items.filter((i) => live.has(i.engagementId) && planAwaitingReview(i, hasReview.get(i.engagementId) ?? false) && (!known || !i.reviewer || mine(i.reviewer)));
 }
 
 /**

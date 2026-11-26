@@ -128,7 +128,8 @@ async function handle(
     return;
   }
   if (msg.type !== "call" || !msg.name) return;
-  const r = await runTool({ store, by: "connector" }, msg.name, msg.args ?? {});
+  // Claude's changes wait in the Inbox for the user (except task dates and chase logs).
+  const r = await runTool({ store, by: "connector", propose: true }, msg.name, msg.args ?? {});
   const changed = r.ok ? await db.changes.where("batchId").equals(r.batchId).count() : 0;
   const summary = describeCall(msg.name, msg.args, r.result);
   await log({
@@ -142,15 +143,29 @@ async function handle(
     batchId: changed ? r.batchId : undefined,
     changed,
     summary,
+    proposalId: r.proposalId,
   });
   await reply(r.ok ? { ok: true, result: r.result } : { ok: false, error: r.error });
-  if (changed) {
+  if (r.proposalId) {
+    scheduleSync();
+    const p = await db.table("proposals").get(r.proposalId);
+    toast({
+      message: `${appName(session.client)} proposed: ${p?.summary ?? summary}`,
+      action: { label: "Review", run: () => openInbox() },
+    });
+  } else if (changed) {
     scheduleSync();
     toast({
       message: `${appName(session.client)}: ${summary}`,
       action: { label: "Undo", run: () => void undoBridgeCall(r.batchId) },
     });
   }
+}
+
+/** Opens the Inbox (from a toast, outside React). */
+function openInbox() {
+  window.history.pushState({}, "", `${import.meta.env.BASE_URL}inbox`);
+  window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
 // ---------- Session log (this device only, 7 days) ----------

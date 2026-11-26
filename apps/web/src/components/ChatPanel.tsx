@@ -2,7 +2,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { clearChat, fileToAttachment, sendMessage, stopChat, undoToolCall, useChat, type Attachment, type ChatMessage } from "../lib/chat";
 import { readSpreadsheet, sheetsToText } from "../lib/spreadsheet";
-import { useSettings } from "../lib/hooks";
+import { useSettings, useSnapshot } from "../lib/hooks";
+import { accept, reject } from "../lib/proposals";
 import { useSpeech } from "../lib/speech";
 import { toast } from "../lib/toast";
 import { Icon } from "./Icon";
@@ -238,6 +239,28 @@ export function ChatPanel({ compact }: { compact?: boolean }) {
   );
 }
 
+/** A change the Assistant proposed: decide it here, or later in the Inbox. */
+function ChatProposal({ id }: { id: string }) {
+  const p = useSnapshot()?.proposals.find((x) => x.id === id);
+  if (!p) return null;
+  if (p.status !== "pending")
+    return <span className="muted">{p.status === "accepted" ? "Accepted" : p.status === "rejected" ? "Rejected" : `Not applied (${p.status})`}</span>;
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300">Waiting for you</span>
+      <button className="font-semibold text-brand-600 hover:underline" onClick={() => void accept(id)}>
+        Accept
+      </button>
+      <button className="muted hover:underline" onClick={() => void reject(id)}>
+        Reject
+      </button>
+      <TLink to="/inbox" className="muted hover:underline">
+        Details
+      </TLink>
+    </span>
+  );
+}
+
 function Message({ m, last, busy, onSend }: { m: ChatMessage; last: boolean; busy: boolean; onSend: (t: string) => void }) {
   if (m.role === "user")
     return (
@@ -309,7 +332,8 @@ function Message({ m, last, busy, onSend }: { m: ChatMessage; last: boolean; bus
           )}
           {t.running ? `${running}…` : t.ok === false ? `${running} failed` : done}
         </span>
-        {!t.running && t.ok && !t.undone && !READ_ONLY.has(t.name) && t.name !== "undo_last" && (
+        {!t.running && t.ok && t.proposalId && <ChatProposal id={t.proposalId} />}
+        {!t.running && t.ok && !t.proposalId && !t.undone && !READ_ONLY.has(t.name) && t.name !== "undo_last" && (
           <button className="font-semibold text-brand-600 hover:underline" onClick={() => void undoToolCall(m.id)}>
             Undo
           </button>

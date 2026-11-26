@@ -138,6 +138,7 @@ export const formDefs: Record<TableName, FieldDef[]> = {
   days: [],
   achievements: [],
   trialBalances: [],
+  proposals: [],
   planItems: [
     { name: "text", label: "Procedure", type: "textarea", required: true },
     { name: "area", label: "Area", type: "text", half: true },

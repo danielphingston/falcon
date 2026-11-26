@@ -38,7 +38,7 @@ export interface ChatMessage {
   role: "user" | "assistant" | "tool" | "error";
   text: string;
   attachments?: { name: string; mimeType: string }[];
-  tool?: { name: string; args: Record<string, unknown>; running: boolean; ok?: boolean; error?: string; result?: unknown; batchId?: string; undone?: boolean };
+  tool?: { name: string; args: Record<string, unknown>; running: boolean; ok?: boolean; error?: string; result?: unknown; batchId?: string; undone?: boolean; proposalId?: string };
   streaming?: boolean;
 }
 
@@ -140,7 +140,8 @@ export async function sendMessage(text: string, attachments: Attachment[] = []) 
       history,
       user: userParts,
       stream,
-      ctx: { store, by: "chat" },
+      // Changes the Assistant makes wait in the Inbox for the user (except task dates and chase logs).
+      ctx: { store, by: "chat", propose: true },
       systemInstruction: assistantInstructions(await loadSnapshot(store), settings, today),
       signal: controller.signal,
       events: {
@@ -157,7 +158,7 @@ export async function sendMessage(text: string, attachments: Attachment[] = []) 
         },
         onToolEnd(call, result) {
           const msg = [...state.messages].reverse().find((m) => m.role === "tool" && m.tool?.running && m.tool.name === call.name);
-          if (msg) patchMessage(msg.id, (m) => ({ ...m, tool: { ...m.tool!, running: false, ok: result.ok, error: result.error, result: result.result, batchId: result.batchId } }));
+          if (msg) patchMessage(msg.id, (m) => ({ ...m, tool: { ...m.tool!, running: false, ok: result.ok, error: result.error, result: result.result, batchId: result.batchId, proposalId: result.proposalId } }));
           if (result.ok) void afterToolChange(result);
         },
       },

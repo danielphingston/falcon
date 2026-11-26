@@ -41,7 +41,8 @@
         "achievements",
         "trialBalances",
         "programItems",
-        "planItems"
+        "planItems",
+        "proposals"
        ]
       }
      },
@@ -1232,6 +1233,33 @@
    "annotations": {
     "readOnlyHint": false,
     "destructiveHint": true
+   }
+  },
+  {
+   "name": "list_proposals",
+   "description": "Changes waiting for the user's approval (your proposals and those from imports), with what each would change. You can't approve or reject them; only the user can, in Falcon's Inbox. Use to check whether earlier proposals were accepted.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "status": {
+      "description": "pending (default), decided (accepted/rejected/stale/void) or all",
+      "type": "string",
+      "enum": [
+       "pending",
+       "decided",
+       "all"
+      ]
+     },
+     "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
    }
   },
   {

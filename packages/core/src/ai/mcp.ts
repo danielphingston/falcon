@@ -32,7 +32,7 @@ export function connectorInstructions(s: Snapshot, settings: Settings, today: st
   return `${assistantInstructions(s, settings, today, now)}
 
 You are connected to Falcon through its local MCP bridge, not the in-app chat:
-- Falcon is open in the user's browser and runs every tool against its own data. Each change you make shows in Falcon under AI connections with an Undo; undo_last reverses only your own last change.
+- Falcon is open in the user's browser and runs every tool against its own data. Your changes are proposals that wait in Falcon's Inbox until the user accepts them (only task dates and chase logs apply at once); you can't accept them. Each call shows in Falcon under AI connections.
 - Engagement types include Stat Audit, Internal Audit, Due Diligence, Transaction Support and ITR, not only FDD deals.
 - Excel files (work plans, RFIs, trial balances) are imported in Falcon itself; ask the user to import them there, then read the result with the tools.
 - Firm checklists are private to the device and not available to you.`;

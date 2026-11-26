@@ -20,6 +20,7 @@ import { useRecord, useTable } from "../lib/hooks";
 import { formDefs, RecordForm, toLocalInput, valuesToPatch, type FormValues } from "./forms";
 import { Icon } from "./Icon";
 import { StepInputs } from "./StepInputs";
+import { AliasEditor } from "./AliasEditor";
 import { Checkbox, Pill, Sheet, statusTone } from "./ui";
 import { ReviewChecklist } from "./ReviewChecklist";
 import { ReviewPointsPanel } from "./ReviewPoints";
@@ -70,6 +71,7 @@ export function EditorHost() {
 }
 
 const nouns: Record<TableName, string> = {
+  proposals: "proposal",
   tasks: "task",
   engagements: "engagement",
   workstreams: "workstream",
@@ -188,6 +190,16 @@ function Extras({ table, record }: { table: TableName; record: AnyEntity }) {
       {table === "workpapers" && <ReviewChecklist wp={record as EntityMap["workpapers"]} />}
       {table === "workpapers" && <ReviewPointsPanel wp={record as EntityMap["workpapers"]} />}
       {table === "infoRequests" && <RfiDetails item={record as EntityMap["infoRequests"]} />}
+      {table === "people" && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">Also written as</h3>
+          <AliasEditor
+            aliases={(record as EntityMap["people"]).aliases ?? []}
+            onChange={(aliases) => void act("Names updated", (ctx) => update(ctx, "people", record.id, { aliases }))}
+            hint="How sheets and work plans write this person (e.g. SaiTeja, Majeed). Steps with these names count in their workload."
+          />
+        </div>
+      )}
       {table === "planItems" && <StepInputs item={record as EntityMap["planItems"]} />}
       {table === "planItems" && <PlanDetails item={record as EntityMap["planItems"]} />}
       {(table === "infoRequests" || table === "followUps") && (

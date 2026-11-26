@@ -286,7 +286,7 @@ let initialized = false;
 
 const DEFAULT_INSTRUCTIONS =
   "Falcon is a work tracker for a Chartered Accountant (audit, due diligence, internal audit): engagements, work papers and review points, the client RFI, work plans, follow-ups and time. " +
-  "Use its tools to read and change data. Never invent ids: use ids from tool results. Every change can be reversed with undo_last, and the user sees each change in Falcon (Settings → AI connections). " +
+  "Use its tools to read and change data. Never invent ids: use ids from tool results. Changes are proposals that wait in Falcon's Inbox until the user accepts them; you can't accept them. " +
   "If a tool says Falcon isn't connected, ask the user to open Falcon in their browser and turn on AI connections.";
 
 const STATUS_TOOL = {

@@ -2,7 +2,11 @@ import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useRef, useState } from "react";
 import {
   applyPlan,
-  isMe,
+  create,
+  ME,
+  cellHas,
+  peopleIndex,
+  unmatchedNames,
   labels,
   matchName,
   parsePlan,
@@ -17,6 +21,8 @@ import {
 } from "@falcon/core";
 import { act } from "../lib/act";
 import { useSettings } from "../lib/hooks";
+import { saveSettings } from "../db";
+import { toast } from "../lib/toast";
 import { readSpreadsheet } from "../lib/spreadsheet";
 import { openEditor } from "./Editor";
 import { Icon } from "./Icon";
@@ -44,7 +50,9 @@ export function WorkPlanTab({ snap, engagementId }: { snap: Snapshot; engagement
   const hasReview = !!info?.hasReview;
   const pr = useMemo(() => planProgress(items), [items]);
 
-  const mine = (i: PlanItem) => isMe(i.assignee, settings.myName) || isMe(i.reviewer, settings.myName);
+  // "Mine": I'm responsible or reviewer, by name, initials or alias ("JK"), including joint owners.
+  const ix = peopleIndex(snap.people, settings);
+  const mine = (i: PlanItem) => cellHas(i.assignee, ME, ix) || cellHas(i.reviewer, ME, ix);
   const toReview = (i: PlanItem) => planAwaitingReview(i, hasReview);
   const done = (i: PlanItem) => i.status === "closed" && (!hasReview || i.reviewStatus === "closed");
   const visible = items.filter(
@@ -103,6 +111,8 @@ export function WorkPlanTab({ snap, engagementId }: { snap: Snapshot; engagement
         {info && <PlanInfoDetails info={info} />}
       </div>
 
+      <UnmatchedNames items={items} people={snap.people} />
+
       <Segmented
         id="plan-show"
         value={show}
@@ -119,6 +129,79 @@ export function WorkPlanTab({ snap, engagementId }: { snap: Snapshot; engagement
 
       {visible.length ? <Steps items={visible} hasReview={hasReview} /> : <EmptyState icon="check" title="Nothing here" />}
       <PlanImport open={importing} onClose={() => setImporting(false)} engagement={e} existing={items} people={snap.people} />
+    </div>
+  );
+}
+
+/**
+ * Names in the plan that don't match anyone ("Rajveer", "SaiTeja", "JK" before
+ * your name is set): pick who each one is, once. Saved as an alias, so every
+ * step with that name counts for that person straight away.
+ */
+function UnmatchedNames({ items, people }: { items: PlanItem[]; people: Snapshot["people"] }) {
+  const settings = useSettings();
+  const ix = peopleIndex(people, settings);
+  const list = unmatchedNames(
+    items.filter((i) => !i.deleted).flatMap((i) => [i.assignee, i.reviewer]),
+    ix,
+  );
+  const [open, setOpen] = useState(true);
+  if (!list.length) return null;
+  const team = people.filter((x) => !x.deleted && x.role !== "client").sort((a, b) => a.name.localeCompare(b.name));
+  const pick = async (raw: string, choice: string) => {
+    if (!choice) return;
+    if (choice === "me") {
+      await saveSettings({ myAliases: [...new Set([...settings.myAliases, raw])] });
+      toast({ message: `“${raw}” is you now`, tone: "success" });
+    } else if (choice === "group") {
+      await saveSettings({ groupNames: [...new Set([...settings.groupNames, raw])] });
+      toast({ message: `“${raw}” treated as a group (unassigned)` });
+    } else if (choice === "new") {
+      await act(`Added ${raw} to People`, (ctx) => create(ctx, "people", { name: raw, role: "team" }));
+    } else {
+      const person = team.find((x) => x.id === choice);
+      if (person) await act(`“${raw}” → ${person.name}`, (ctx) => update(ctx, "people", person.id, { aliases: [...new Set([...(person.aliases ?? []), raw])] }));
+    }
+  };
+  return (
+    <div className="card border-amber-300 p-4 dark:border-amber-800">
+      <button className="flex w-full items-center justify-between text-left" onClick={() => setOpen((v) => !v)}>
+        <span className="font-semibold">
+          {list.length} name{list.length === 1 ? "" : "s"} in this plan {list.length === 1 ? "isn't" : "aren't"} matched to a person
+        </span>
+        <span className="text-xs text-[var(--accent)]">{open ? "Hide" : "Show"}</span>
+      </button>
+      {open && (
+        <>
+          <p className="mt-1 text-xs muted">Say who each is, once. Their steps then show in that person's workload (and yours, for your initials), on every engagement.</p>
+          <ul className="mt-2 divide-y divide-[var(--border)]">
+            {list.map((n) => (
+              <li key={n.raw} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                <span>
+                  <b>{n.raw}</b>{" "}
+                  <span className="text-xs muted">
+                    · {n.count} step{n.count === 1 ? "" : "s"}
+                    {n.kind === "ambiguous" && ` · could be ${n.candidates.map((c) => c.name).join(" or ")}`}
+                  </span>
+                </span>
+                <select className="input w-auto py-1 text-sm" value="" onChange={(e) => void pick(n.raw, e.target.value)} aria-label={`Who is ${n.raw}`}>
+                  <option value="">Who is this?</option>
+                  <option value="me">Me{settings.myName !== "Me" ? ` (${settings.myName})` : ""}</option>
+                  <optgroup label="Team">
+                    {team.map((x) => (
+                      <option key={x.id} value={x.id}>
+                        {x.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <option value="new">Add “{n.raw}” to People</option>
+                  <option value="group">Not a person (a group, e.g. Team)</option>
+                </select>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </div>
   );
 }

@@ -29,6 +29,8 @@ export interface BridgeLogEntry {
   batchId?: string;
   /** How many records the call changed. */
   changed?: number;
+  /** Set when the call's changes were queued in the Inbox instead of applied. */
+  proposalId?: string;
   summary?: string;
 }
 
@@ -87,6 +89,10 @@ class FalconDB extends Dexie {
     });
     this.version(7).stores({
       bridgeLog: "id, sessionId, at",
+    });
+    // Changes waiting for the user's approval (synced, so they can be decided on any device).
+    this.version(8).stores({
+      proposals: "id, status, createdAt",
     });
   }
 }
