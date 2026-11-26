@@ -86,10 +86,11 @@ describe("chasing", () => {
       requestedOn: "2026-10-16",
       requestedFromId: p.record.id,
     });
-    expect(irl.record.nextChaseOn).toBe("2026-10-20");
+    // Blank criticality = Medium: 5 working days, Mon–Fri (Fri 16 → Fri 23).
+    expect(irl.record.nextChaseOn).toBe("2026-10-23");
     const chased = await logChase(ctx, "infoRequests", irl.record.id);
     expect(chased.record.chaseLog).toEqual(["2026-10-16"]);
-    expect(chased.record.nextChaseOn).toBe("2026-10-20");
+    expect(chased.record.nextChaseOn).toBe("2026-10-23");
   });
 });
 

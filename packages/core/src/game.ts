@@ -6,6 +6,7 @@
  */
 import { addDays, parseISO } from "date-fns";
 import { isWorkingDay, toISODate } from "./dates";
+import { hasContact } from "./chase";
 import type { Achievement, DayRecord, Settings } from "./schema";
 import type { Snapshot } from "./store";
 import { isoWeekKey, periodReport, weekDays, type PeriodReport } from "./time";
@@ -102,7 +103,8 @@ export function ringFor(s: Snapshot, today: string, settings: Pick<Settings, "fo
   const chasedToday =
     s.infoRequests.reduce((n, r) => n + r.chaseLog.filter((d) => d === today).length, 0) +
     s.followUps.reduce((n, f) => n + f.nudgeLog.filter((d) => d === today).length, 0);
-  const openIrl = s.infoRequests.filter((r) => r.status === "pending" || r.status === "partial");
+  // Items with nobody to chase aren't chases (4.2).
+  const openIrl = s.infoRequests.filter((r) => (r.status === "pending" || r.status === "partial") && hasContact(r));
   const openFu = s.followUps.filter((f) => f.status === "waiting");
   const chaseDue = openIrl.filter((r) => dueBy(r.nextChaseOn)).length + openFu.filter((f) => dueBy(f.nextNudgeOn)).length;
   const overdueChases =

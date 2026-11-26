@@ -88,7 +88,8 @@ export const formDefs: Record<TableName, FieldDef[]> = {
     { name: "text", label: "Review point", type: "textarea", required: true },
     { name: "status", label: "Status", type: "select", options: opts(reviewPointStatuses, labels.reviewPointStatus), half: true },
     { name: "assignedToId", label: "To address", type: "person", roles: ["team"], half: true },
-    { name: "raisedById", label: "Raised by", type: "person", roles: ["manager", "partner"] },
+    { name: "due", label: "Due", type: "date", half: true },
+    { name: "raisedById", label: "Raised by", type: "person", roles: ["manager", "partner"], half: true },
   ],
   infoRequests: [
     { name: "number", label: "RFI #", type: "text", placeholder: "8.3", half: true },
@@ -310,7 +311,7 @@ export function RecordForm({
         );
         return (
           <select {...common} value={v} onChange={(e) => set(f.name, e.target.value)}>
-            <option value="">{f.name === "personId" || f.name === "requestedFromId" ? "Nobody yet" : "Me"}</option>
+            <option value="">{f.name === "personId" || f.name === "requestedFromId" ? "Nobody yet" : f.name === "assignedToId" ? "The work paper's preparer" : "Me"}</option>
             {list.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name} · {labels.personRole[p.role]}
