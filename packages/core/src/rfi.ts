@@ -52,6 +52,34 @@ export interface RfiInfo {
   sectionNotes: Record<string, string>;
   /** The table's column headers, as in the sheet. */
   columns: string[];
+  /** Per sheet: the status-like columns found, and the one that drives Falcon's status. */
+  statusColumns: { sheet: string; options: string[]; chosen: string }[];
+  /** Each distinct status value in the chosen columns, how often, and what it maps to (undefined = not recognised). */
+  statusValues: { value: string; count: number; status?: InfoRequest["status"] | "ignore"; fromMap: boolean }[];
+}
+
+/** Choices remembered per engagement: which column is the status, and how its words map. */
+export interface RfiParseOptions {
+  /** Sheet name → header of the status column ("" = no status column). */
+  statusColumns?: Record<string, string>;
+  /** Status word (lower case, single spaces) → status, or "ignore" to leave unchanged. */
+  statusMap?: Record<string, InfoRequest["status"] | "ignore">;
+}
+
+/** "Partially  Received " → "partially received": the key used in a status map. */
+export const statusKey = (v: string) => v.toLowerCase().replace(/\s+/g, " ").trim();
+
+/**
+ * Which status column to trust by default: the firm's own ("V&S Status",
+ * "Status", "Status of Input") over the client's ("Status Acme", "Current
+ * Status", "Client status").
+ */
+export function rankStatusColumn(label: string, clientWord?: string): number {
+  const l = label.toLowerCase();
+  if ((clientWord && l.includes(clientWord)) || /client|auditee|management|current/.test(l)) return -5;
+  if (/v\s*&\s*s|\bour\b|firm|internal|auditor/.test(l)) return 3;
+  if (/^status$|status of input|input status/.test(l.trim())) return 2;
+  return 0;
 }
 
 export interface ParsedRfi {
@@ -179,6 +207,9 @@ const isLegend = (s: string) => (s.length <= 25 && !!rfiStatus(s).status) || /^(
 export function rfiNumber(raw: string, prev: { major: number; minor: number } | null): { major: number; minor: number } | null {
   const s = clean(raw);
   if (!/^\d+(\.\d+)?$/.test(s)) return null;
+  // Written out with a trailing zero ("5.10", "8.20": Excel's displayed text), the number is exact.
+  const exact = /^(\d+)\.(\d*0|\d{2,})$/.exec(s);
+  if (exact && exact[2].length <= 3 && Number(exact[2]) > 0) return { major: Number(exact[1]), minor: Number(exact[2]) };
   const n = Number(s);
   const major = Math.floor(n + 1e-9);
   const frac = (Math.round((n - major) * 100) / 100).toFixed(2).slice(2).replace(/0+$/, "");
@@ -220,14 +251,29 @@ function clientWord(title: string[]): string | undefined {
  * "Particulars / Checklist" style header; annexure sheets skipped) plus a
  * Notes sheet if there is one.
  */
-export function parseRfi(sheets: SheetData[]): ParsedRfi | null {
+export function parseRfi(sheets: SheetData[], opts: RfiParseOptions = {}): ParsedRfi | null {
   const candidates = sheets
     .filter((s) => !isAnnexure(s.name) && !isNotes(s.name))
     .sort((a, b) => Number(/rfi|irl|request|requisition/i.test(b.name)) - Number(/rfi|irl|request|requisition/i.test(a.name)));
   const items: RfiItem[] = [];
   const sections: string[] = [];
   const warnings: string[] = [];
-  const info: RfiInfo = { title: [], notes: [], sectionNotes: {}, columns: [] };
+  const info: RfiInfo = { title: [], notes: [], sectionNotes: {}, columns: [], statusColumns: [], statusValues: [] };
+  const seenValues = new Map<string, { value: string; count: number; status?: InfoRequest["status"] | "ignore"; fromMap: boolean }>();
+  /** The sheet's word → status, through the user's map first; unknown words aren't guessed. */
+  const mapStatus = (raw: string): { status?: InfoRequest["status"]; notAvailable?: boolean } => {
+    const v = clean(raw);
+    if (!v) return {};
+    const k = statusKey(v);
+    const mapped = opts.statusMap?.[k];
+    const known = mapped === undefined ? rfiStatus(v) : {};
+    const status = mapped ?? known.status;
+    const seen = seenValues.get(k) ?? { value: v, count: 0, status, fromMap: mapped !== undefined };
+    seen.count++;
+    seenValues.set(k, seen);
+    if (mapped === "ignore" || !status) return {};
+    return mapped !== undefined ? { status: mapped as InfoRequest["status"] } : known;
+  };
   const used: string[] = [];
   let sectionNo = 0;
 
@@ -245,6 +291,27 @@ export function parseRfi(sheets: SheetData[]): ParsedRfi | null {
     const clientCols = h.extras.filter(
       (e) => (cw && e.label.toLowerCase().includes(cw)) || (cols.clientComment !== undefined && e.col > cols.clientComment && /^remarks?$/i.test(e.label)),
     );
+    // The status column: the user's choice for this sheet, else the firm's own over the client's.
+    const statusOpts = h.labels.length ? sheet.rows[h.row].map((c, j) => ({ col: j, label: clean(c) })).filter((x) => /status/i.test(x.label)) : [];
+    if (statusOpts.length) {
+      const want = opts.statusColumns?.[sheet.name];
+      const chosen =
+        want !== undefined
+          ? statusOpts.find((x) => x.label.toLowerCase() === want.toLowerCase())
+          : [...statusOpts].sort((a, b) => rankStatusColumn(b.label, cw) - rankStatusColumn(a.label, cw))[0];
+      const usable = chosen && rankStatusColumn(chosen.label, cw) > -5 ? chosen : want !== undefined ? chosen : undefined;
+      // Every other status column is kept as information, with its header.
+      for (const x of statusOpts)
+        if (x.col !== usable?.col && !h.extras.some((e) => e.col === x.col) && !clientCols.some((e) => e.col === x.col)) h.extras.push({ col: x.col, label: x.label });
+      if (usable) {
+        cols.status = usable.col;
+        const i = h.extras.findIndex((e) => e.col === usable.col);
+        if (i >= 0) h.extras.splice(i, 1);
+        const j = clientCols.findIndex((e) => e.col === usable.col);
+        if (j >= 0) clientCols.splice(j, 1);
+      } else delete cols.status;
+      info.statusColumns.push({ sheet: sheet.name, options: statusOpts.map((x) => x.label), chosen: usable?.label ?? "" });
+    }
     const extras = h.extras.filter((e) => !clientCols.includes(e));
     const get = (r: string[], c: Col) => (cols[c] !== undefined ? clean(r[cols[c]!]) : "");
     const hasArea = cols.area !== undefined;
@@ -381,8 +448,17 @@ export function parseRfi(sheets: SheetData[]): ParsedRfi | null {
         number = sectionNo ? `${sectionNo}.${itemNo}` : String(itemNo);
         prevNum = sectionNo ? { major: sectionNo, minor: itemNo } : prevNum;
       }
+      // Two items never share a number (e.g. a mis-read 5.1 next to a real 5.1): the later one takes the next free number.
+      if (items.some((x) => x.number === number)) {
+        const major = number.includes(".") ? number.split(".")[0] : "";
+        let k = itemNo;
+        while (items.some((x) => x.number === (major ? `${major}.${k}` : String(k)))) k++;
+        itemNo = k;
+        number = major ? `${major}.${k}` : String(k);
+        warnings.push(`Two rows had the same number; the second was renumbered to ${number}. Check it against the sheet.`);
+      }
       lastWasSub = false;
-      const st = rfiStatus(get(r, "status"));
+      const st = mapStatus(get(r, "status"));
       const fields = extrasOf(r);
       const descLink = linkAt(cols.desc!);
       if (descLink) fields.unshift({ label: "Link", value: descLink, link: descLink });
@@ -418,6 +494,9 @@ export function parseRfi(sheets: SheetData[]): ParsedRfi | null {
   if (!sections.length) warnings.push("No sections found; requests are numbered 1, 2, 3…");
   const skipped = sheets.filter((s) => isAnnexure(s.name)).map((s) => s.name);
   if (skipped.length) warnings.push(`Annexure sheets not imported: ${skipped.join(", ")}`);
+  info.statusValues = [...seenValues.values()].sort((a, b) => b.count - a.count);
+  const unknown = info.statusValues.filter((v) => !v.status);
+  if (unknown.length) warnings.push(`Status words not recognised (left unchanged): ${unknown.map((v) => `“${v.value}”`).join(", ")}. Map them below.`);
   return { sheet: used.join(", "), items, sections, warnings, info };
 }
 
@@ -468,7 +547,7 @@ export function planRfi(parsed: ParsedRfi, existing: InfoRequest[]): RfiPlan {
 export async function applyRfi(
   ctx: Ctx,
   plan: RfiPlan,
-  opts: { engagementId: string; today: string; requestedFromId?: string; resolvePerson?: (name: string) => string | undefined; file?: string; parsed?: ParsedRfi },
+  opts: { engagementId: string; today: string; requestedFromId?: string; resolvePerson?: (name: string) => string | undefined; file?: string; parsed?: ParsedRfi; statusMap?: RfiParseOptions["statusMap"] },
 ) {
   const batch: Ctx = { ...ctx, batchId: ctx.batchId ?? newId() };
   const out = [];
@@ -517,7 +596,18 @@ export async function applyRfi(
     const { info, sheet } = opts.parsed;
     out.push(
       await update(batch, "engagements", opts.engagementId, {
-        rfiInfo: { file: opts.file ?? "", sheet, title: info.title, notes: info.notes, sectionNotes: info.sectionNotes, columns: info.columns, importedAt: new Date().toISOString() },
+        rfiInfo: {
+          file: opts.file ?? "",
+          sheet,
+          title: info.title,
+          notes: info.notes,
+          sectionNotes: info.sectionNotes,
+          columns: info.columns,
+          importedAt: new Date().toISOString(),
+          // Remembered for the next version of this IRL: which column is the status, and how its words map.
+          statusColumns: Object.fromEntries(info.statusColumns.map((c) => [c.sheet, c.chosen])),
+          ...(opts.statusMap && Object.keys(opts.statusMap).length ? { statusMap: opts.statusMap } : {}),
+        },
       }),
     );
   }

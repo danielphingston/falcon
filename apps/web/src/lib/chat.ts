@@ -22,6 +22,7 @@ import { db, getSettings, store } from "../db";
 import { celebrate } from "./confetti";
 import { NeedsAuthError, getAccessToken, hasScope, readAuth } from "./google";
 import { scheduleSync } from "./sync";
+import { announceUnlocked } from "./unlocked";
 
 export interface Attachment {
   name: string;
@@ -177,6 +178,7 @@ async function afterToolChange(result: ToolCallResult) {
   const changes = (await store.listChanges()).filter((c) => c.batchId === result.batchId);
   if (!changes.length) return;
   scheduleSync();
+  void announceUnlocked(result.batchId);
   const order = { small: 1, medium: 2, irl_complete: 3, engagement_closed: 4 } as const;
   let best: keyof typeof order | null = null;
   for (const c of changes) {

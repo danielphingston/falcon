@@ -168,7 +168,27 @@ function missingFrom(toks: string[], docs: { toks: Set<string> }[]): string[] {
 
 // ---------- Readiness ----------
 
-export type Readiness = "ready" | "blocked" | "suggested" | "unlinked";
+/**
+ * A step's state (build brief 2.1), from links the user confirmed:
+ * - ready: every input is in (N/A inputs don't count against it)
+ * - canStart: something is in (received or partial), or the books side is
+ * - blocked: nothing usable is in yet
+ * - likelyNa: every input is N/A (propose the step as N/A)
+ * - noInput: the user said the step needs no client input
+ * Plus suggested (links not confirmed yet) and unlinked (nothing to go on).
+ */
+export type Readiness = "ready" | "canStart" | "blocked" | "likelyNa" | "noInput" | "suggested" | "unlinked";
+export type Outcome = "ready" | "canStart" | "blocked" | "likelyNa" | "noInput";
+
+export const readinessLabels: Record<Readiness, string> = {
+  ready: "Ready",
+  canStart: "Can start",
+  blocked: "Blocked",
+  likelyNa: "Likely N/A",
+  noInput: "No input needed",
+  suggested: "To confirm",
+  unlinked: "Not linked",
+};
 
 export interface Blocker {
   /** What is missing, e.g. "Fixed asset register". */
@@ -184,18 +204,27 @@ export interface Blocker {
   from?: string;
 }
 
+/** One input of a step with where it stands (2.2: what's in and what's missing, together). */
+export interface StepInput {
+  input: string;
+  rfiNumber?: string;
+  rfiId?: string;
+  state: "received" | "partial" | "pending" | "na" | "not_requested";
+  /** The books (TB / GL / accounting backup): a comparison step can start once they're in. */
+  books?: boolean;
+}
+
 export interface StepReadiness {
   step: PlanItem;
-  /**
-   * ready / blocked: from links the user confirmed (set by hand, or a
-   * suggestion they confirmed). suggested: only an AI or matcher suggestion,
-   * which counts for nothing until confirmed. unlinked: nothing to go on.
-   */
+  /** See Readiness. Only links the user confirmed give ready / canStart / blocked / likelyNa. */
   state: Readiness;
   /** For a suggestion: what the step would be once confirmed. */
-  wouldBe?: "ready" | "blocked";
-  /** Inputs the step needs that have come in (for a suggestion: would need). */
+  wouldBe?: Outcome;
+  /** Every input with its state, books first. */
+  inputs: StepInput[];
+  /** Inputs that have come in (received). */
   received: { input: string; rfiNumber?: string; rfiId?: string }[];
+  /** Inputs not fully in (partial, pending, not on the RFI). */
   blockers: Blocker[];
   /** True when the links say no client input is needed. */
   none?: boolean;
@@ -213,25 +242,44 @@ export interface StepReadiness {
 export interface EngagementReadiness {
   engagement: Engagement;
   steps: StepReadiness[];
-  /** Confirmed only. */
+  /** Confirmed only, from here to likelyNa. */
   ready: StepReadiness[];
-  /** Confirmed only. */
+  canStart: StepReadiness[];
   blocked: StepReadiness[];
+  likelyNa: StepReadiness[];
+  noInput: StepReadiness[];
   /** Suggested by AI or the matcher, waiting for the user to confirm. */
   suggested: StepReadiness[];
   unlinked: StepReadiness[];
-  /** Missing inputs (confirmed links only) with the steps each one holds up, most-blocking first. */
+  /** Missing inputs of confirmed steps (blocked and can start) with the steps each holds up, most-blocking first. */
   byInput: { blocker: Blocker; steps: PlanItem[] }[];
 }
 
-const DONE = new Set(["received", "na"]);
+/** The books: TB / GL dump / accounting backup. Users can mark or unmark any item (`books`). */
+const BOOKS = /\b(tb|trial balance|gl dump|general ledger|books? of accounts?|accounting (backup|data|dump)|tally (backup|data)|ledger dump|transaction list)\b/i;
+export const isBooksItem = (r: Pick<InfoRequest, "description"> & { books?: boolean }): boolean => r.books ?? BOOKS.test(r.description.split("\n")[0]);
+
+/**
+ * The 10.2 rules: N/A + pending is Blocked; N/A + received is Ready;
+ * N/A + partial is Can start; Likely N/A only when every input is N/A. A
+ * comparison step can start once its books input is partly or fully in.
+ */
+export function stepOutcome(inputs: StepInput[], none = false): Outcome | undefined {
+  if (none) return "noInput";
+  if (!inputs.length) return undefined;
+  const live = inputs.filter((i) => i.state !== "na");
+  if (!live.length) return "likelyNa";
+  if (live.every((i) => i.state === "received")) return "ready";
+  if (live.some((i) => i.state === "received" || i.state === "partial")) return "canStart";
+  return "blocked";
+}
 
 /**
  * Readiness of every open, applicable step of one engagement's work plan.
  *
- * Only links the user confirmed count towards ready / blocked. A step's links
- * come from, in order: the user (confirmed), the AI (suggestion), the offline
- * matcher (suggestion); an AI suggestion replaces the matcher's.
+ * Only links the user confirmed count. A step's links come from, in order:
+ * the user (confirmed), the AI (suggestion), the offline matcher
+ * (suggestion); an AI suggestion replaces the matcher's.
  * `personName` resolves RFI contacts to names for the "from" column.
  */
 export function engagementReadiness(
@@ -254,27 +302,38 @@ export function engagementReadiness(
     const extra = set?.extra ?? guess!.missing.map((name) => ({ name, received: false }));
     const none = !!set?.none;
     const source: StepReadiness["source"] = set ? set.source : rfiIds.length || extra.length ? "auto" : "none";
+    const inputs: StepInput[] = [];
     const received: StepReadiness["received"] = [];
     const blockers: Blocker[] = [];
     if (!none) {
       for (const id of rfiIds) {
         const r = byId.get(id)!;
-        if (DONE.has(r.status)) received.push({ input: r.description, rfiNumber: r.number, rfiId: r.id });
-        else
+        const state: StepInput["state"] = r.status === "received" ? "received" : r.status === "na" ? "na" : r.status === "partial" ? "partial" : "pending";
+        inputs.push({ input: r.description, rfiNumber: r.number, rfiId: r.id, state, ...(isBooksItem(r) ? { books: true } : {}) });
+        if (state === "received") received.push({ input: r.description, rfiNumber: r.number, rfiId: r.id });
+        else if (state !== "na")
           blockers.push({
             input: r.description,
             rfiNumber: r.number,
             rfiId: r.id,
-            state: r.status === "partial" ? "partial" : "pending",
+            state: state === "partial" ? "partial" : "pending",
             requestedOn: r.requestedOn,
             daysWaiting: r.requestedOn ? Math.max(0, daysBetween(r.requestedOn, today)) : undefined,
             from: (r.requestedFromId && personName(r.requestedFromId)) || r.responsible,
           });
       }
-      for (const x of extra) (x.received ? received.push({ input: x.name }) : blockers.push({ input: x.name, state: "not_requested" }));
+      for (const x of extra) {
+        inputs.push({ input: x.name, state: x.received ? "received" : "not_requested" });
+        if (x.received) received.push({ input: x.name });
+        else blockers.push({ input: x.name, state: "not_requested" });
+      }
+      inputs.sort((a, b) => Number(!!b.books) - Number(!!a.books));
     }
-    const outcome: "ready" | "blocked" | undefined = none ? "ready" : blockers.length ? "blocked" : received.length ? "ready" : undefined;
-    const base = { step, received, blockers, none: none || undefined, source, suggestedBy: set?.suggestedBy, links: { rfiIds, extra, none: none || undefined } };
+    // Books side in (partly or fully) is enough to start a comparison step.
+    const booksIn = inputs.some((i) => i.books && (i.state === "received" || i.state === "partial"));
+    let outcome = stepOutcome(inputs, none);
+    if (outcome === "blocked" && booksIn) outcome = "canStart";
+    const base = { step, inputs, received, blockers, none: none || undefined, source, suggestedBy: set?.suggestedBy, links: { rfiIds, extra, none: none || undefined } };
     if (!outcome) return { ...base, state: "unlinked" as const };
     if (source === "manual") return { ...base, state: outcome };
     return { ...base, state: "suggested" as const, wouldBe: outcome };
@@ -282,20 +341,24 @@ export function engagementReadiness(
 
   const map = new Map<string, { blocker: Blocker; steps: PlanItem[] }>();
   for (const s of out)
-    if (s.state === "blocked")
+    if (s.state === "blocked" || s.state === "canStart")
       for (const b of s.blockers) {
         const k = b.rfiId ?? `x:${b.input.toLowerCase()}`;
         const g = map.get(k) ?? { blocker: b, steps: [] };
         g.steps.push(s.step);
         map.set(k, g);
       }
+  const of = (st: Readiness) => out.filter((s) => s.state === st);
   return {
     engagement,
     steps: out,
-    ready: out.filter((s) => s.state === "ready"),
-    blocked: out.filter((s) => s.state === "blocked"),
-    suggested: out.filter((s) => s.state === "suggested"),
-    unlinked: out.filter((s) => s.state === "unlinked"),
+    ready: of("ready"),
+    canStart: of("canStart"),
+    blocked: of("blocked"),
+    likelyNa: of("likelyNa"),
+    noInput: of("noInput"),
+    suggested: of("suggested"),
+    unlinked: of("unlinked"),
     byInput: [...map.values()].sort((a, b) => b.steps.length - a.steps.length || (b.blocker.daysWaiting ?? 0) - (a.blocker.daysWaiting ?? 0)),
   };
 }
@@ -316,13 +379,16 @@ export function blockerText(b: Blocker): string {
 
 // ---------- Export ----------
 
-export const BLOCKER_HEAD = ["Engagement", "Step", "Area", "Work plan step", "Person responsible", "Cannot be done because", "RFI no.", "Status", "Days waiting", "With (client)"];
+export const BLOCKER_HEAD = ["Engagement", "Step", "Area", "Work plan step", "Person responsible", "Step state", "Missing input", "RFI no.", "Status", "Days waiting", "With (client)", "Already in"];
 
-/** One row per step × missing input, for the manager's sheet. */
+/** Steps not yet ready (blocked, then can start): what the manager needs to see. */
+const notReady = (e: EngagementReadiness) => [...e.blocked, ...e.canStart];
+
+/** One row per step × missing input, for the manager's sheet; "Already in" lists what has come. */
 export function blockerRows(list: EngagementReadiness[]): string[][] {
   const rows: string[][] = [];
   for (const e of list)
-    for (const s of e.blocked)
+    for (const s of notReady(e))
       for (const b of s.blockers)
         rows.push([
           e.engagement.name,
@@ -330,11 +396,13 @@ export function blockerRows(list: EngagementReadiness[]): string[][] {
           s.step.area,
           s.step.text.split("\n")[0],
           s.step.assignee ?? "",
+          readinessLabels[s.state],
           b.input,
           b.rfiNumber ?? "",
           b.state === "not_requested" ? "Not on the RFI" : b.state === "partial" ? "Partly received" : "Pending",
           b.daysWaiting === undefined ? "" : String(b.daysWaiting),
           b.from ?? "",
+          s.received.map((x) => (x.rfiNumber ? `RFI ${x.rfiNumber} ` : "") + x.input.split("\n")[0]).join("; "),
         ]);
   return rows;
 }
@@ -345,20 +413,24 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 const pendingNote = (e: EngagementReadiness) =>
   e.suggested.length ? ` (${e.suggested.length} more step${e.suggested.length === 1 ? "" : "s"} not confirmed yet, not included)` : "";
 
+const headline = (e: EngagementReadiness) =>
+  `${e.ready.length} step${e.ready.length === 1 ? "" : "s"} can be completed now, ${e.canStart.length} can be started, ${e.blocked.length} blocked${pendingNote(e)}`;
+
 /** Email-ready table (pastes into Outlook / Gmail as a table). */
 export function blockerHtml(list: EngagementReadiness[]): string {
   const td = 'style="border:1px solid #bbb;padding:4px 8px;font-family:Calibri,Arial,sans-serif;font-size:11pt;vertical-align:top"';
   const th = td.replace('style="', 'style="background:#f2f2f2;font-weight:bold;');
   const parts: string[] = [];
   for (const e of list) {
-    if (!e.blocked.length) continue;
+    const steps = notReady(e);
+    if (!steps.length) continue;
     parts.push(
-      `<p style="font-family:Calibri,Arial,sans-serif;font-size:11pt"><b>${esc(e.engagement.name)}</b>: ${e.ready.length} step${e.ready.length === 1 ? "" : "s"} can be executed now, ${e.blocked.length} blocked${pendingNote(e)}.</p>`,
-      `<table style="border-collapse:collapse"><tr>${["Step", "Area", "Work plan step", "Person", "Cannot be done because"].map((h) => `<th ${th}>${h}</th>`).join("")}</tr>` +
-        e.blocked
+      `<p style="font-family:Calibri,Arial,sans-serif;font-size:11pt"><b>${esc(e.engagement.name)}</b>: ${esc(headline(e))}.</p>`,
+      `<table style="border-collapse:collapse"><tr>${["Step", "Area", "Work plan step", "Person", "State", "Waiting for", "Already in"].map((h) => `<th ${th}>${h}</th>`).join("")}</tr>` +
+        steps
           .map(
             (s) =>
-              `<tr><td ${td}>${esc(s.step.number)}</td><td ${td}>${esc(s.step.area)}</td><td ${td}>${esc(s.step.text.split("\n")[0])}</td><td ${td}>${esc(s.step.assignee ?? "")}</td><td ${td}>${s.blockers.map((b) => esc(blockerText(b))).join("<br>")}</td></tr>`,
+              `<tr><td ${td}>${esc(s.step.number)}</td><td ${td}>${esc(s.step.area)}</td><td ${td}>${esc(s.step.text.split("\n")[0])}</td><td ${td}>${esc(s.step.assignee ?? "")}</td><td ${td}>${readinessLabels[s.state]}</td><td ${td}>${s.blockers.map((b) => esc(blockerText(b))).join("<br>")}</td><td ${td}>${s.received.map((x) => esc((x.rfiNumber ? `RFI ${x.rfiNumber} ` : "") + x.input.split("\n")[0])).join("<br>")}</td></tr>`,
           )
           .join("") +
         `</table>`,
@@ -371,15 +443,74 @@ export function blockerHtml(list: EngagementReadiness[]): string {
 export function blockersPlainText(list: EngagementReadiness[]): string {
   const out: string[] = [];
   for (const e of list) {
-    if (!e.blocked.length) continue;
-    out.push(`${e.engagement.name}: ${e.ready.length} steps can be executed now, ${e.blocked.length} blocked${pendingNote(e)}.`, "");
-    for (const s of e.blocked) {
-      out.push(`${s.step.number} ${s.step.area}: ${s.step.text.split("\n")[0]}${s.step.assignee ? ` [${s.step.assignee}]` : ""}`);
+    const steps = notReady(e);
+    if (!steps.length) continue;
+    out.push(`${e.engagement.name}: ${headline(e)}.`, "");
+    for (const s of steps) {
+      out.push(`${s.step.number} ${s.step.area}: ${s.step.text.split("\n")[0]}${s.step.assignee ? ` [${s.step.assignee}]` : ""} (${readinessLabels[s.state]})`);
+      for (const x of s.received) out.push(`   + in: ${(x.rfiNumber ? `RFI ${x.rfiNumber} ` : "") + x.input.split("\n")[0]}`);
       for (const b of s.blockers) out.push(`   - ${blockerText(b)}`);
     }
     out.push("");
   }
   return out.join("\n").trim();
+}
+
+// ---------- RFI impact: reverse lookup (2.3) and what an item unlocked (2.4) ----------
+
+export interface RfiImpact {
+  item: InfoRequest;
+  /** Steps that use this item, with their state now. Suggested links are marked. */
+  steps: { step: PlanItem; state: Readiness; confirmed: boolean }[];
+}
+
+/** Every step an RFI item feeds (confirmed links first), for "search by RFI item". */
+export function rfiImpact(r: EngagementReadiness, item: InfoRequest): RfiImpact {
+  const steps = r.steps
+    .filter((s) => s.links.rfiIds.includes(item.id))
+    .map((s) => ({ step: s.step, state: (s.state === "suggested" ? (s.wouldBe ?? "suggested") : s.state) as Readiness, confirmed: s.source === "manual" }))
+    .sort((a, b) => Number(b.confirmed) - Number(a.confirmed) || a.step.order - b.step.order);
+  return { item, steps };
+}
+
+/** Open RFI items with how many confirmed steps each holds up, most first. */
+export function itemsByStepsHeldUp(r: EngagementReadiness, rfi: InfoRequest[]): { item: InfoRequest; steps: number }[] {
+  const open = rfi.filter((i) => !i.deleted && i.engagementId === r.engagement.id && (i.status === "pending" || i.status === "partial"));
+  return open
+    .map((item) => ({ item, steps: r.steps.filter((s) => s.source === "manual" && (s.state === "blocked" || s.state === "canStart") && s.links.rfiIds.includes(item.id)).length }))
+    .filter((x) => x.steps > 0)
+    .sort((a, b) => b.steps - a.steps || a.item.number.localeCompare(b.item.number, undefined, { numeric: true }));
+}
+
+const RANK: Partial<Record<Readiness, number>> = { blocked: 0, canStart: 1, ready: 2, likelyNa: 2, noInput: 2 };
+
+/**
+ * Steps that moved forward because RFI items changed (e.g. 3.1 marked
+ * received): blocked → can start, or → ready. Compares the readiness with the
+ * items as they were and as they are now.
+ */
+export function unlockedSteps(
+  engagement: Engagement,
+  plan: PlanItem[],
+  rfiNow: InfoRequest[],
+  rfiBefore: InfoRequest[],
+  today: string,
+): { step: PlanItem; from: Readiness; to: Readiness }[] {
+  const before = new Map(engagementReadiness(engagement, plan, rfiBefore, today).steps.map((s) => [s.step.id, s.state]));
+  return engagementReadiness(engagement, plan, rfiNow, today)
+    .steps.filter((s) => {
+      const was = before.get(s.step.id);
+      return was !== undefined && RANK[s.state] !== undefined && RANK[was] !== undefined && RANK[s.state]! > RANK[was]!;
+    })
+    .map((s) => ({ step: s.step, from: before.get(s.step.id)!, to: s.state }));
+}
+
+/** "Unlocked 2 steps: 4.2 Ageing (Ravi) → can start; 4.7 Long outstandings (Ravi) → ready". */
+export function unlockedText(list: { step: PlanItem; to: Readiness }[]): string {
+  if (!list.length) return "";
+  const one = (x: { step: PlanItem; to: Readiness }) =>
+    `${x.step.number} ${x.step.text.split("\n")[0].slice(0, 40)}${x.step.assignee ? ` (${x.step.assignee})` : ""}${x.to === "ready" ? " → ready" : " → can start"}`;
+  return `Unlocked ${list.length} step${list.length === 1 ? "" : "s"}: ${list.slice(0, 4).map(one).join("; ")}${list.length > 4 ? `; and ${list.length - 4} more` : ""}`;
 }
 
 // ---------- AI linking ----------

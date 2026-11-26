@@ -16,6 +16,11 @@ import {
   type EngagementReadiness,
   type PlanItem,
   type StepReadiness,
+  type StepInput,
+  type InfoRequest,
+  readinessLabels,
+  rfiImpact,
+  itemsByStepsHeldUp,
 } from "@falcon/core";
 import { openEditor } from "../components/Editor";
 import { Icon } from "../components/Icon";
@@ -27,7 +32,7 @@ import { linkWithAi, type LinkScope } from "../lib/readiness";
 import { toast } from "../lib/toast";
 import { downloadXlsx } from "../lib/xlsx";
 
-type Tab = "ready" | "blocked" | "suggested" | "unlinked";
+type Tab = "ready" | "canStart" | "blocked" | "likelyNa" | "suggested" | "unlinked";
 
 /** Saves suggestions as the user's confirmed links, as one undoable action. */
 const confirmSteps = (steps: StepReadiness[], message?: string) =>
@@ -85,11 +90,15 @@ export function ReadinessPage() {
   const list: EngagementReadiness[] = scope.map((e) =>
     engagementReadiness(e, snap.planItems.filter(mine), snap.infoRequests, today, (id) => l.people.get(id)?.name),
   );
-  const ready = list.flatMap((r) => r.ready);
+  // "No input needed" steps sit with Ready: nothing stops them.
+  const ready = list.flatMap((r) => [...r.ready, ...r.noInput]);
+  const canStart = list.flatMap((r) => r.canStart);
   const blocked = list.flatMap((r) => r.blocked);
+  const likelyNa = list.flatMap((r) => r.likelyNa);
   const suggested = list.flatMap((r) => r.suggested);
   const unlinked = list.flatMap((r) => r.unlinked);
-  const total = ready.length + blocked.length + suggested.length + unlinked.length;
+  const total = ready.length + canStart.length + blocked.length + likelyNa.length + suggested.length + unlinked.length;
+  const notReady = canStart.length + blocked.length;
   const aiSuggested = suggested.filter((s) => s.source === "ai");
   const noRfi = scope.filter((e) => !snap.infoRequests.some((r) => r.engagementId === e.id && !r.deleted));
   const multi = scope.length > 1;
@@ -140,8 +149,8 @@ export function ReadinessPage() {
     downloadXlsx(fileBase, [
       {
         name: "Summary",
-        head: ["Engagement", "Ready to execute", "Blocked", "Not confirmed yet (not in this file)", "Not linked", "As at"],
-        rows: list.map((r) => [r.engagement.name, r.ready.length, r.blocked.length, r.suggested.length, r.unlinked.length, today]),
+        head: ["Engagement", "Ready", "Can start", "Blocked", "Likely N/A", "No input needed", "Not confirmed yet (not in this file)", "Not linked", "As at"],
+        rows: list.map((r) => [r.engagement.name, r.ready.length, r.canStart.length, r.blocked.length, r.likelyNa.length, r.noInput.length, r.suggested.length, r.unlinked.length, today]),
         widths: [28, 16, 10, 34, 12, 12],
       },
       { name: "Blockers", head: BLOCKER_HEAD, rows: blockerRows(list).map((r) => r.map((c, i) => (i === 8 && c ? Number(c) : c))) },
@@ -254,44 +263,34 @@ export function ReadinessPage() {
       )}
 
       <div className="card space-y-3 p-4">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <Tile n={ready.length} label="Ready to execute" tone="text-emerald-600 dark:text-emerald-400" on={tab === "ready"} onClick={() => setTab("ready")} />
-          <Tile n={blocked.length} label="Blocked" tone="text-rose-600 dark:text-rose-400" on={tab === "blocked"} onClick={() => setTab("blocked")} />
-          <Tile n={suggested.length} label="To confirm" tone="text-amber-600 dark:text-amber-400" on={tab === "suggested"} onClick={() => setTab("suggested")} />
-          <Tile n={unlinked.length} label="Not linked yet" tone="muted" on={tab === "unlinked"} onClick={() => setTab("unlinked")} />
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <Tile n={ready.length} label="Ready" hint="every input in" tone="text-emerald-600 dark:text-emerald-400" on={tab === "ready"} onClick={() => setTab("ready")} />
+          <Tile n={canStart.length} label="Can start" hint="some input in" tone="text-sky-600 dark:text-sky-400" on={tab === "canStart"} onClick={() => setTab("canStart")} />
+          <Tile n={blocked.length} label="Blocked" hint="nothing usable in" tone="text-rose-600 dark:text-rose-400" on={tab === "blocked"} onClick={() => setTab("blocked")} />
+          <Tile n={likelyNa.length} label="Likely N/A" hint="every input N/A" tone="text-slate-500" on={tab === "likelyNa"} onClick={() => setTab("likelyNa")} />
+          <Tile n={suggested.length} label="To confirm" hint="suggested links" tone="text-amber-600 dark:text-amber-400" on={tab === "suggested"} onClick={() => setTab("suggested")} />
+          <Tile n={unlinked.length} label="Not linked" hint="nothing to go on" tone="muted" on={tab === "unlinked"} onClick={() => setTab("unlinked")} />
         </div>
         {total > 0 && (
           <div className="flex h-2 overflow-hidden rounded-full bg-[var(--surface-2)]">
             <div className="bg-emerald-500" style={{ width: `${(ready.length / total) * 100}%` }} />
+            <div className="bg-sky-500" style={{ width: `${(canStart.length / total) * 100}%` }} />
             <div className="bg-rose-500" style={{ width: `${(blocked.length / total) * 100}%` }} />
+            <div className="bg-slate-400" style={{ width: `${(likelyNa.length / total) * 100}%` }} />
             <div className="bg-amber-300 dark:bg-amber-700" style={{ width: `${(suggested.length / total) * 100}%` }} />
           </div>
         )}
         <p className="text-xs muted">
-          Open steps only ({total}). Ready and Blocked count only links you've confirmed.
+          Open steps only ({total}). Tap a tile to see its steps. Only links you've confirmed count.
           {suggested.length > 0 && ` ${suggested.length} step${suggested.length === 1 ? " has" : "s have"} suggested links (from AI or the offline matcher) to check under To confirm.`}
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Segmented
-          id="ready-tab"
-          value={tab}
-          onChange={setTab}
-          options={[
-            { value: "ready", label: `Ready ${ready.length}` },
-            { value: "blocked", label: `Blockers ${blocked.length}` },
-            { value: "suggested", label: `To confirm ${suggested.length}` },
-            { value: "unlinked", label: `Not linked ${unlinked.length}` },
-          ]}
-        />
-        {tab === "blocked" && blocked.length > 0 && (
-          <Segmented id="ready-view" value={view} onChange={setView} options={[{ value: "step", label: "By step" }, { value: "input", label: "By missing input" }]} />
-        )}
-      </div>
+      {selected && scope[0] && <RfiLookup r={list[0]} rfi={snap.infoRequests} />}
 
-      {tab === "blocked" && blocked.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+      {(tab === "blocked" || tab === "canStart") && notReady > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Segmented id="ready-view" value={view} onChange={setView} options={[{ value: "step", label: "By step" }, { value: "input", label: "By missing input" }]} />
           <button className="btn btn-primary btn-sm" onClick={exportXlsx}>
             <Icon name="download" size={14} /> Export to Excel
           </button>
@@ -303,26 +302,43 @@ export function ReadinessPage() {
           </a>
         </div>
       )}
+      {(tab === "blocked" || tab === "canStart") && view === "input" && notReady > 0 && <ByInput list={list} today={today} multi={multi} />}
 
       {tab === "ready" &&
         (ready.length ? (
-          <Grouped list={list} pick={(r) => r.ready} multi={multi} render={(s) => <ReadyRow s={s} />} />
+          <Grouped list={list} pick={(r) => [...r.ready, ...r.noInput]} multi={multi} render={(s) => <StepRow s={s} />} />
         ) : (
           <EmptyState
             icon="check"
             title="Nothing ready yet"
-            hint={suggested.length ? "Confirm the suggested links under To confirm and ready steps show here." : blocked.length ? "Every confirmed step is still waiting on the client. See Blockers." : undefined}
+            hint={suggested.length ? "Confirm the suggested links under To confirm and ready steps show here." : notReady ? "Every confirmed step is still waiting on something. See Can start and Blocked." : undefined}
           />
         ))}
-      {tab === "blocked" &&
-        (blocked.length ? (
-          view === "step" ? (
-            <Grouped list={list} pick={(r) => r.blocked} multi={multi} render={(s) => <BlockedRow s={s} />} />
-          ) : (
-            <ByInput list={list} today={today} multi={multi} />
-          )
+      {tab === "canStart" &&
+        view === "step" &&
+        (canStart.length ? (
+          <>
+            <p className="px-1 text-sm muted">Something is in (or the books are), so work can begin. The workpaper stays partly complete until the rest arrives.</p>
+            <Grouped list={list} pick={(r) => r.canStart} multi={multi} render={(s) => <StepRow s={s} />} />
+          </>
         ) : (
-          <EmptyState icon="check" title="No blockers" hint={suggested.length ? "None among confirmed steps. Suggested links under To confirm aren't counted yet." : "Every confirmed step has its inputs."} />
+          <EmptyState icon="check" title="Nothing here" hint="Steps with some inputs in show here." />
+        ))}
+      {tab === "blocked" &&
+        view === "step" &&
+        (blocked.length ? (
+          <Grouped list={list} pick={(r) => r.blocked} multi={multi} render={(s) => <StepRow s={s} />} />
+        ) : (
+          <EmptyState icon="check" title="No blocked steps" hint={suggested.length ? "None among confirmed steps. Suggested links under To confirm aren't counted yet." : "Every confirmed step has at least something in."} />
+        ))}
+      {tab === "likelyNa" &&
+        (likelyNa.length ? (
+          <>
+            <p className="px-1 text-sm muted">Every input of these steps is N/A. If the step doesn't apply either, mark it N/A: it leaves the plan's counts (with Undo).</p>
+            <Grouped list={list} pick={(r) => r.likelyNa} multi={multi} render={(s) => <StepRow s={s} />} />
+          </>
+        ) : (
+          <EmptyState icon="check" title="Nothing likely N/A" />
         ))}
       {tab === "suggested" &&
         (suggested.length ? (
@@ -343,6 +359,67 @@ export function ReadinessPage() {
   );
 }
 
+/**
+ * Search by RFI item (build brief 2.3): type a number or words, see every step
+ * the item feeds with its state and owner. Empty, it lists the open items
+ * holding up the most steps.
+ */
+function RfiLookup({ r, rfi }: { r: EngagementReadiness; rfi: InfoRequest[] }) {
+  const [q, setQ] = useState("");
+  const items = rfi.filter((x) => !x.deleted && x.engagementId === r.engagement.id);
+  const term = q.trim().toLowerCase().replace(/^rfi\s*/, "");
+  const hits = term
+    ? items.filter((x) => x.number === term || x.number.startsWith(term + ".") || x.description.toLowerCase().includes(term)).slice(0, 6)
+    : [];
+  const top = itemsByStepsHeldUp(r, rfi).slice(0, 5);
+  return (
+    <div className="card space-y-2 p-3">
+      <input className="input py-1.5 text-sm" placeholder="Find an RFI item: number (e.g. 1.5) or words" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Find an RFI item" />
+      {!term && top.length > 0 && (
+        <p className="text-xs muted">
+          Holding up the most steps:{" "}
+          {top.map((t, i) => (
+            <button key={t.item.id} className="text-[var(--accent)] hover:underline" onClick={() => setQ(t.item.number)}>
+              {i ? ", " : ""}RFI {t.item.number} ({t.steps})
+            </button>
+          ))}
+        </p>
+      )}
+      {term && !hits.length && <p className="text-xs muted">No RFI item matches.</p>}
+      {hits.map((item) => {
+        const imp = rfiImpact(r, item);
+        return (
+          <div key={item.id} className="rounded-xl border border-[var(--border)] p-2">
+            <button className="text-left text-sm font-medium hover:underline" onClick={() => openEditor({ table: "infoRequests", id: item.id })}>
+              <span className="mr-1 font-mono text-xs muted">RFI {item.number}</span>
+              {item.description.split("\n")[0]} <span className="text-xs muted">· {item.status}</span>
+            </button>
+            {imp.steps.length ? (
+              <ul className="mt-1 space-y-0.5 text-xs">
+                {imp.steps.map((s) => (
+                  <li key={s.step.id}>
+                    <button className="text-left hover:underline" onClick={() => openEditor({ table: "planItems", id: s.step.id })}>
+                      <span className="font-mono muted">{s.step.number}</span> {short(s.step.text.split("\n")[0], 80)}
+                      <span className="muted">
+                        {" "}
+                        · {readinessLabels[s.state]}
+                        {s.step.assignee && ` · ${s.step.assignee}`}
+                        {!s.confirmed && " · suggested"}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1 text-xs muted">Not linked to any work plan step yet.</p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Header() {
   return (
     <header>
@@ -352,11 +429,16 @@ function Header() {
   );
 }
 
-function Tile({ n, label, tone, on, onClick }: { n: number; label: string; tone: string; on: boolean; onClick: () => void }) {
+function Tile({ n, label, hint, tone, on, onClick }: { n: number; label: string; hint?: string; tone: string; on: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} className={`rounded-xl border p-3 text-left transition ${on ? "border-[var(--accent)] bg-[var(--surface-2)]" : "border-[var(--border)]"}`}>
+    <button
+      onClick={onClick}
+      aria-pressed={on}
+      className={`rounded-xl border p-3 text-left transition ${on ? "border-[var(--accent)] bg-[var(--surface-2)]" : "border-[var(--border)]"}`}
+    >
       <p className={`text-2xl font-bold ${tone}`}>{n}</p>
-      <p className="text-xs muted">{label}</p>
+      <p className="text-xs font-medium">{label}</p>
+      {hint && <p className="text-[11px] muted">{hint}</p>}
     </button>
   );
 }
@@ -513,7 +595,7 @@ function SuggestedRow({ s, picked, onPick }: { s: StepReadiness; picked: boolean
         </ul>
         <div className="mt-1.5 flex flex-wrap items-center gap-2">
           <span className="text-xs muted">
-            Would be: <b className={s.wouldBe === "ready" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{s.wouldBe === "ready" ? "Ready" : "Blocked"}</b>
+            Would be: <b className={s.wouldBe === "ready" || s.wouldBe === "noInput" ? "text-emerald-600 dark:text-emerald-400" : s.wouldBe === "canStart" ? "text-sky-600 dark:text-sky-400" : s.wouldBe === "likelyNa" ? "muted" : "text-rose-600 dark:text-rose-400"}>{s.wouldBe ? readinessLabels[s.wouldBe] : "—"}</b>
           </span>
           <span className="ml-auto flex gap-1">
             <button className="btn btn-primary btn-sm" onClick={() => void confirmSteps([s])}>
@@ -544,53 +626,60 @@ function StepText({ step }: { step: PlanItem }) {
   );
 }
 
-function ReadyRow({ s }: { s: StepReadiness }) {
-  return (
-    <div className="flex items-start gap-3 px-3 py-2.5">
-      <span className="mt-0.5 shrink-0">
-        <Pill tone="green">Ready</Pill>
-      </span>
-      <div className="min-w-0 flex-1">
-        <StepText step={s.step} />
-        <div className="mt-1 flex flex-wrap gap-1">
-          {s.received.length ? (
-            s.received.map((x, i) => (
-              <span key={i} className="max-w-full truncate rounded-md bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" title={x.input}>
-                ✓ {x.rfiNumber ? `RFI ${x.rfiNumber} ` : ""}
-                {short(x.input)}
-              </span>
-            ))
-          ) : (
-            <span className="text-[11px] muted">No client input needed</span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+const OUTCOME_TONE: Record<string, Tone> = { ready: "green", noInput: "green", canStart: "blue", blocked: "red", likelyNa: "slate" };
+const INPUT_MARK: Record<StepInput["state"], [string, string]> = {
+  received: ["✓", "text-emerald-600 dark:text-emerald-400"],
+  partial: ["◐", "text-sky-600 dark:text-sky-400"],
+  pending: ["○", "text-amber-600 dark:text-amber-400"],
+  na: ["–", "muted"],
+  not_requested: ["▲", "text-rose-600 dark:text-rose-400"],
+};
+const INPUT_WORD: Record<StepInput["state"], string> = { received: "received", partial: "partly in", pending: "pending", na: "N/A", not_requested: "not on the RFI" };
 
-function BlockedRow({ s }: { s: StepReadiness }) {
+/** A confirmed step with every input: what's in and what's missing, side by side (2.2). */
+function StepRow({ s }: { s: StepReadiness }) {
+  const blockerFor = (i: StepInput) => s.blockers.find((b) => (b.rfiId ? b.rfiId === i.rfiId : b.input === i.input));
+  const markNa = () => act("Step marked N/A", (ctx) => update(ctx, "planItems", s.step.id, { applicable: false, notes: [s.step.notes, "N/A: every input is N/A on the RFI"].filter(Boolean).join("\n") }));
   return (
     <div className="flex items-start gap-3 px-3 py-2.5">
       <span className="mt-0.5 shrink-0">
-        <Pill tone="red">Blocked</Pill>
+        <Pill tone={OUTCOME_TONE[s.state] ?? "slate"}>{readinessLabels[s.state]}</Pill>
       </span>
       <div className="min-w-0 flex-1">
         <StepText step={s.step} />
-        <ul className="mt-1 space-y-0.5">
-          {s.blockers.map((b, i) => (
-            <li key={i} className="flex items-start gap-1.5 text-xs">
-              <Pill tone={stateTone[b.state]}>{stateLabel[b.state]}</Pill>
-              <span className="min-w-0">
-                {b.rfiNumber && <span className="font-mono muted">RFI {b.rfiNumber} </span>}
-                {short(b.input, 90)}
-                {b.daysWaiting !== undefined && <span className="muted"> · {b.daysWaiting}d</span>}
-                {b.from && <span className="muted"> · {b.from}</span>}
-              </span>
-            </li>
-          ))}
-        </ul>
-        {s.received.length > 0 && <p className="mt-1 text-[11px] muted">Has {s.received.length} of {s.received.length + s.blockers.length} inputs</p>}
+        {s.none ? (
+          <p className="mt-1 text-[11px] muted">No client input needed</p>
+        ) : (
+          <ul className="mt-1 space-y-0.5">
+            {s.inputs.map((i, k) => {
+              const b = blockerFor(i);
+              const [mark, cls] = INPUT_MARK[i.state];
+              return (
+                <li key={k} className="flex items-start gap-1.5 text-xs">
+                  <span className={`w-3 shrink-0 text-center ${cls}`} title={INPUT_WORD[i.state]}>
+                    {mark}
+                  </span>
+                  <span className={`min-w-0 ${i.state === "na" ? "muted line-through" : ""}`}>
+                    {i.rfiNumber && <span className="font-mono muted">RFI {i.rfiNumber} </span>}
+                    {i.state === "not_requested" ? <>Not on the RFI: {i.input}</> : short(i.input.split("\n")[0], 90)}
+                    {i.books && <span className="ml-1 rounded bg-[var(--surface-2)] px-1 text-[10px] font-semibold">books</span>}
+                    <span className="muted">
+                      {" "}
+                      · {INPUT_WORD[i.state]}
+                      {b?.daysWaiting !== undefined && ` · ${b.daysWaiting}d`}
+                      {b?.from && ` · ${b.from}`}
+                    </span>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {s.state === "likelyNa" && (
+          <button className="mt-1 text-xs font-medium text-[var(--accent)]" onClick={() => void markNa()}>
+            Mark step N/A
+          </button>
+        )}
       </div>
     </div>
   );

@@ -77,6 +77,10 @@ export const engagementFields = z.object({
       sectionNotes: z.record(z.string(), z.string()).default({}),
       columns: z.array(z.string()).default([]),
       importedAt: isoDateTime,
+      /** Sheet name → header of the column that drives the status ("" = none). */
+      statusColumns: z.record(z.string(), z.string()).optional(),
+      /** Status word (lower case) → status, or "ignore". */
+      statusMap: z.record(z.string(), z.enum(["pending", "partial", "received", "na", "ignore"])).optional(),
     })
     .optional(),
 });
@@ -187,6 +191,8 @@ export const infoRequestFields = z.object({
   clientComment: z.string().optional(),
   /** Sub-heading within the section, e.g. "Bank" or "Employee Statutory Dues › ESIC". */
   subsection: z.string().optional(),
+  /** The books (TB / GL / accounting backup): a comparison step can start once it's in. Unset = guessed from the text. */
+  books: z.boolean().optional(),
   /** Every other RFI column for this request, with the sheet's own headers ("Criticality", "Remarks - Firm"…). */
   fields: z.array(z.object({ label: z.string(), value: z.string(), link: z.string().optional() })).optional(),
 });

@@ -77,7 +77,7 @@ async function unzip(bytes: Uint8Array): Promise<Map<string, () => Promise<Uint8
     const name = decoder.decode(bytes.subarray(p + 46, p + 46 + nameLen));
     p += 46 + nameLen + extraLen + commentLen;
     // Only the parts we read: workbook, relationships, shared strings, worksheets (and their links).
-    if (!/^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml|worksheets\/[^/]+\.xml|worksheets\/_rels\/[^/]+\.xml\.rels)$/.test(name)) continue;
+    if (!/^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml|styles\.xml|worksheets\/[^/]+\.xml|worksheets\/_rels\/[^/]+\.xml\.rels)$/.test(name)) continue;
     const dataStart = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true);
     const raw = bytes.subarray(dataStart, dataStart + size);
     if (method !== 0 && method !== 8) throw new Error("This .xlsx uses an unsupported compression method");
@@ -112,6 +112,7 @@ async function readXlsx(bytes: Uint8Array, only?: (name: string) => boolean): Pr
     els(xml(await get("xl/_rels/workbook.xml.rels")) ?? workbook, "Relationship").map((r) => [r.getAttribute("Id"), r.getAttribute("Target") ?? ""]),
   );
   const strings = els(xml(await get("xl/sharedStrings.xml")) ?? workbook, "si").map(text);
+  const decimalsFor = numberFormats(xml(await get("xl/styles.xml")));
 
   const sheets: SheetData[] = [];
   for (const s of els(workbook, "sheet")) {
@@ -121,7 +122,7 @@ async function readXlsx(bytes: Uint8Array, only?: (name: string) => boolean): Pr
     const bytesOfSheet = await get(`xl/${target}`);
     if (!bytesOfSheet) continue;
     const sheetXml = new TextDecoder().decode(bytesOfSheet);
-    const rows = scanSheet(sheetXml, strings);
+    const rows = scanSheet(sheetXml, strings, decimalsFor);
     const links = await sheetLinks(sheetXml, get, `xl/${target}`);
     // Dense rows, but only as wide as the table: a stray value thousands of
     // columns out (seen in real RFIs) is cut at the first gap of 64+ empty columns.
@@ -178,7 +179,36 @@ const unescapeXml = (s: string) =>
  * 300-row RFI can be ~100 MB of XML); those are skipped, so only cells with
  * values cost anything.
  */
-function scanSheet(xmlText: string, strings: string[]): string[][] {
+/**
+ * Fixed decimal places per cell style, from styles.xml: a cell formatted
+ * "0.00" holding 5.1 shows as "5.10" in Excel, and that's what we keep
+ * (RFI item numbers like 5.10 would otherwise collapse into 5.1).
+ */
+export function numberFormats(styles: Document | null): (styleIndex: number) => number | undefined {
+  if (!styles) return () => undefined;
+  // Built-in fixed-decimal formats: 1 = "0", 2 = "0.00".
+  const codes = new Map<number, string>([
+    [1, "0"],
+    [2, "0.00"],
+  ]);
+  for (const f of els(styles, "numFmt")) codes.set(Number(f.getAttribute("numFmtId")), f.getAttribute("formatCode") ?? "");
+  const xfs = els(styles, "cellXfs")[0];
+  const ids = xfs ? Array.from(xfs.getElementsByTagName("xf")).map((x) => Number(x.getAttribute("numFmtId") ?? 0)) : [];
+  return (i) => fixedDecimals(codes.get(ids[i] ?? -1));
+}
+
+/** "0.00" → 2, "0.0" → 1, "0" → 0; undefined for anything else (dates, %, currency, thousands). */
+export function fixedDecimals(code: string | undefined): number | undefined {
+  if (!code) return undefined;
+  const first = code.split(";")[0].replace(/"[^"]*"/g, "").replace(/\[[^\]]*\]/g, "").trim();
+  const m = /^0(?:\.(0+))?$/.exec(first);
+  return m ? (m[1]?.length ?? 0) : undefined;
+}
+
+/** "1.2000000000000002" → "1.2"; "4.0999999999999996" → "4.1". */
+export const tidyNumber = (v: string) => (/^-?\d+\.\d{12,}$/.test(v) ? String(Number(Number(v).toPrecision(15))) : v);
+
+function scanSheet(xmlText: string, strings: string[], decimalsFor: (styleIndex: number) => number | undefined = () => undefined): string[][] {
   const rows: string[][] = [];
   let row = -1;
   let col = -1;
@@ -220,6 +250,12 @@ function scanSheet(xmlText: string, strings: string[]): string[][] {
         const v = /<v>([\s\S]*?)<\/v>/.exec(inner)?.[1];
         if (v === undefined) continue;
         value = t === "s" ? (strings[Number(v)] ?? "") : t === "b" ? (v === "1" ? "TRUE" : "FALSE") : v;
+        if (!t || t === "n") {
+          // Numbers as Excel displays them: fixed decimals from the cell's format, else without float noise.
+          const st = /\ss="(\d+)"/.exec(" " + attrs)?.[1];
+          const dp = st ? decimalsFor(Number(st)) : undefined;
+          value = dp !== undefined && /^-?[\d.]+(e-?\d+)?$/i.test(v) ? Number(v).toFixed(dp) : tidyNumber(v);
+        }
       }
       value = t === "s" ? value : unescapeXml(value);
       if (value === "") continue;

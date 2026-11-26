@@ -7,6 +7,7 @@ import { store } from "../db";
 import { useSnapshot } from "./hooks";
 import { scheduleSync } from "./sync";
 import { toast } from "./toast";
+import { announceUnlocked } from "./unlocked";
 
 const ctx = () => ({ store, by: "app" as const });
 
@@ -22,6 +23,7 @@ export async function accept(id: string): Promise<boolean> {
       return false;
     }
     toast({ message: "Applied", action: { label: "Undo", run: () => void undo(d.batchId!) } });
+    void announceUnlocked(d.batchId);
     return true;
   } catch (e) {
     toast({ message: e instanceof Error ? e.message : "Couldn't apply it", tone: "error" });

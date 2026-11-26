@@ -7,6 +7,13 @@ import {
   engagementReadiness,
   guessInputs,
   inputTokens,
+  isBooksItem,
+  itemsByStepsHeldUp,
+  rfiImpact,
+  unlockedSteps,
+  unlockedText,
+  stepOutcome,
+  type StepInput,
   linkPrompt,
   parseLinkReply,
   type Engagement,
@@ -57,19 +64,19 @@ describe("readiness", () => {
   it("treats the matcher's links as suggestions: nothing counts until confirmed", () => {
     const r = engagementReadiness(eng, plan, items, "2026-11-23");
     // s5 was set by hand ("no client input"): confirmed, so it counts.
-    expect(r.ready.map((s) => s.step.id)).toEqual(["s5"]);
-    expect(r.blocked).toEqual([]);
+    expect(r.noInput.map((s) => s.step.id)).toEqual(["s5"]);
+    expect([r.ready, r.canStart, r.blocked, r.likelyNa]).toEqual([[], [], [], []]);
     expect(r.byInput).toEqual([]);
     expect(r.suggested.map((s) => [s.step.id, s.source, s.wouldBe])).toEqual([
-      ["s1", "auto", "blocked"],
+      ["s1", "auto", "canStart"], // FAR pending, but the books (TB/GL) are in
       ["s2", "auto", "ready"],
-      ["s3", "auto", "blocked"],
+      ["s3", "auto", "canStart"], // purchase register partly in
     ]);
     expect(r.unlinked.map((s) => s.step.id)).toEqual(["s4"]);
     expect(blockerRows([r])).toEqual([]);
   });
 
-  it("sorts confirmed steps into ready and blocked, with reasons", () => {
+  it("sorts confirmed steps into the five states, listing what's in and what's missing", () => {
     const first = engagementReadiness(eng, plan, items, "2026-11-23");
     // Confirm every suggestion as it is.
     const confirmed = plan.map((p) => {
@@ -79,44 +86,82 @@ describe("readiness", () => {
     expect(confirmed[0].inputs).toMatchObject({ source: "manual", suggestedBy: "matcher" });
     const r = engagementReadiness(eng, confirmed, items, "2026-11-23");
     expect(r.suggested).toEqual([]);
-    expect(r.ready.map((s) => s.step.id)).toEqual(["s2", "s5"]);
-    expect(r.blocked.map((s) => s.step.id)).toEqual(["s1", "s3"]);
+    expect(r.ready.map((s) => s.step.id)).toEqual(["s2"]);
+    expect(r.canStart.map((s) => s.step.id)).toEqual(["s1", "s3"]);
+    expect(r.blocked).toEqual([]);
+    expect(r.noInput.map((s) => s.step.id)).toEqual(["s5"]);
     expect(r.unlinked.map((s) => s.step.id)).toEqual(["s4"]);
-    const gst = r.blocked[1];
+
+    // 2.2: every input with its state, books first.
+    const far = r.canStart[0];
+    expect(far.inputs.map((i) => [i.rfiNumber, i.state, !!i.books])).toEqual([
+      ["1.1", "received", true],
+      ["1.2", "pending", false],
+    ]);
+    expect(far.blockers[0]).toMatchObject({ rfiNumber: "1.2", daysWaiting: 22, from: "Ravi" });
+    const gst = r.canStart[1];
     expect(gst.blockers.map((b) => [b.input, b.state])).toEqual([
       ["Purchase register for the period", "partial"],
       ["GSTR-2B", "not_requested"],
     ]);
-    expect(r.blocked[0].blockers[0]).toMatchObject({ rfiNumber: "1.2", daysWaiting: 22, from: "Ravi" });
     expect(r.byInput.map((g) => [g.blocker.input.slice(0, 15), g.steps.length])).toEqual([
       ["Fixed assets re", 1],
       ["Purchase regist", 1],
       ["GSTR-2B", 1],
     ]);
     expect(blockerRows([r])).toHaveLength(3);
+    expect(blockerRows([r])[0].slice(5, 7)).toEqual(["Can start", "Fixed assets register with depreciation workings"]);
+    expect(blockerRows([r])[0][11]).toBe("RFI 1.1 Detailed TB and GL dump as at cut-off");
     const text = blockersPlainText([r]);
-    expect(text).toContain("Widget Co: 2 steps can be executed now, 2 blocked.");
+    expect(text).toContain("Widget Co: 1 step can be completed now, 2 can be started, 0 blocked.");
+    expect(text).toContain("   + in: RFI 1.1 Detailed TB and GL dump as at cut-off");
     expect(text).toContain("GSTR-2B: not on the RFI (not requested yet)");
     expect(text).toContain("RFI 1.2 Fixed assets register with depreciation workings: not received, 22d since requested (with Ravi)");
+  });
+
+  it("follows the mixed-input rules (10.2)", () => {
+    const i = (state: StepInput["state"], books = false): StepInput => ({ input: state, state, ...(books ? { books: true } : {}) });
+    expect(stepOutcome([i("na"), i("pending")])).toBe("blocked");
+    expect(stepOutcome([i("na"), i("received")])).toBe("ready");
+    expect(stepOutcome([i("na"), i("partial")])).toBe("canStart");
+    expect(stepOutcome([i("na"), i("na")])).toBe("likelyNa");
+    expect(stepOutcome([i("pending"), i("not_requested")])).toBe("blocked");
+    expect(stepOutcome([], true)).toBe("noInput");
+    expect(stepOutcome([])).toBeUndefined();
+    expect(isBooksItem({ description: "Accounting backup (Tally) for P1 and P2" })).toBe(true);
+    expect(isBooksItem({ description: "Accounting backup (Tally)", books: false })).toBe(false);
+    expect(isBooksItem({ description: "Pay register" })).toBe(false);
+
+    // Books partly in + the other side pending: can start (build the books side of the workpaper).
+    const books = rfi("b", "1.5", "Accounting backup", "partial");
+    const pay = rfi("p", "9.1", "Pay register", "pending", "Payroll");
+    const all = [books, pay, rfi("n", "12.1", "CCD agreements", "na")];
+    const st = (id: string, ids: string[]) => step(id, id, "X", `Step ${id}`, { inputs: { rfiIds: ids, extra: [], source: "manual" } });
+    const r = engagementReadiness(eng, [st("10", ["b", "p"]), st("11", ["p"]), st("12", ["n"]), st("13", ["n", "p"])], all, "2026-11-23");
+    expect(r.steps.map((s) => [s.step.id, s.state])).toEqual([
+      ["10", "canStart"],
+      ["11", "blocked"],
+      ["12", "likelyNa"],
+      ["13", "blocked"],
+    ]);
   });
 
   it("an AI suggestion replaces the matcher's, but still needs confirming", () => {
     // s2's matcher suggestion is RFI 1.3 (BRS); the AI suggests RFI 1.1 plus an input not on the RFI.
     const ai = [{ ...plan[1], inputs: { rfiIds: ["r1"], extra: [{ name: "Bank statements", received: false }], source: "ai" as const } }];
     const r = engagementReadiness(eng, ai, items, "2026-11-23");
-    expect(r.ready).toEqual([]);
-    expect(r.blocked).toEqual([]);
-    expect(r.suggested[0]).toMatchObject({ source: "ai", wouldBe: "blocked", received: [{ rfiNumber: "1.1" }], blockers: [{ input: "Bank statements", state: "not_requested" }] });
+    expect([r.ready, r.canStart, r.blocked]).toEqual([[], [], []]);
+    expect(r.suggested[0]).toMatchObject({ source: "ai", wouldBe: "canStart", received: [{ rfiNumber: "1.1" }], blockers: [{ input: "Bank statements", state: "not_requested" }] });
     expect(confirmedInputs(r.suggested[0])).toEqual({ rfiIds: ["r1"], extra: [{ name: "Bank statements", received: false }], none: undefined, source: "manual", suggestedBy: "ai" });
     // Confirmed: now it counts.
     const after = engagementReadiness(eng, [{ ...ai[0], inputs: confirmedInputs(r.suggested[0]) }], items, "2026-11-23");
-    expect(after.blocked.map((s) => s.step.id)).toEqual(["s2"]);
+    expect(after.canStart.map((s) => s.step.id)).toEqual(["s2"]);
   });
 
   it("the exports say how many steps aren't confirmed yet", () => {
     const withOneConfirmed = plan.map((p) => (p.id === "s1" ? { ...p, inputs: { rfiIds: ["r2"], extra: [], source: "manual" as const } } : p));
     const r = engagementReadiness(eng, withOneConfirmed, items, "2026-11-23");
-    expect(blockersPlainText([r])).toContain("Widget Co: 1 steps can be executed now, 1 blocked (2 more steps not confirmed yet, not included).");
+    expect(blockersPlainText([r])).toContain("Widget Co: 0 steps can be completed now, 0 can be started, 1 blocked (2 more steps not confirmed yet, not included).");
   });
 
   it("reads the AI's links", () => {
@@ -127,5 +172,38 @@ describe("readiness", () => {
       { stepId: "s2", rfiIds: [], extra: [], none: true },
     ]);
     expect(parseLinkReply("not json", plan, items)).toEqual([]);
+  });
+});
+
+describe("RFI impact (2.3, 2.4)", () => {
+  const link = (id: string, num: string, ids: string[], who: string) =>
+    step(id, num, "Receivables", `Step ${num}`, { assignee: who, inputs: { rfiIds: ids, extra: [], source: "manual" } });
+  const ageing = rfi("a", "3.1", "Ageing report with management comments", "pending", "Receivables");
+  const books = rfi("b", "1.1", "Accounting backup", "pending");
+  const plan2 = [link("x1", "4.2", ["a"], "Ravi"), link("x2", "4.7", ["a"], "Ravi"), link("x3", "4.9", ["a", "b"], "Asha"), link("x4", "5.1", ["b"], "Dev")];
+
+  it("lists every step an item feeds, and the items holding up the most", () => {
+    const r = engagementReadiness(eng, plan2, [ageing, books], "2026-11-26");
+    expect(rfiImpact(r, ageing).steps.map((s) => [s.step.number, s.state, s.step.assignee])).toEqual([
+      ["4.2", "blocked", "Ravi"],
+      ["4.7", "blocked", "Ravi"],
+      ["4.9", "blocked", "Asha"],
+    ]);
+    expect(itemsByStepsHeldUp(r, [ageing, books]).map((x) => [x.item.number, x.steps])).toEqual([
+      ["3.1", 3],
+      ["1.1", 2],
+    ]);
+  });
+
+  it("names the steps an item unlocked, and whose they are", () => {
+    const received = { ...ageing, status: "received" as const };
+    const list = unlockedSteps(eng, plan2, [received, books], [ageing, books], "2026-11-26");
+    expect(list.map((x) => [x.step.number, x.from, x.to])).toEqual([
+      ["4.2", "blocked", "ready"],
+      ["4.7", "blocked", "ready"],
+      ["4.9", "blocked", "canStart"],
+    ]);
+    expect(unlockedText(list)).toBe("Unlocked 3 steps: 4.2 Step 4.2 (Ravi) → ready; 4.7 Step 4.7 (Ravi) → ready; 4.9 Step 4.9 (Asha) → can start");
+    expect(unlockedSteps(eng, plan2, [ageing, books], [ageing, books], "2026-11-26")).toEqual([]);
   });
 });

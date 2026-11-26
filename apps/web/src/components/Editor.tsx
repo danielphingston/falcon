@@ -11,12 +11,16 @@ import {
   remove,
   todayISO,
   update,
+  isBooksItem,
+  engagementReadiness,
+  readinessLabels,
+  rfiImpact,
   type AnyEntity,
   type EntityMap,
   type TableName,
 } from "@falcon/core";
 import { act } from "../lib/act";
-import { useRecord, useTable } from "../lib/hooks";
+import { useRecord, useSnapshot, useTable } from "../lib/hooks";
 import { formDefs, RecordForm, toLocalInput, valuesToPatch, type FormValues } from "./forms";
 import { Icon } from "./Icon";
 import { StepInputs } from "./StepInputs";
@@ -190,6 +194,8 @@ function Extras({ table, record }: { table: TableName; record: AnyEntity }) {
       {table === "workpapers" && <ReviewChecklist wp={record as EntityMap["workpapers"]} />}
       {table === "workpapers" && <ReviewPointsPanel wp={record as EntityMap["workpapers"]} />}
       {table === "infoRequests" && <RfiDetails item={record as EntityMap["infoRequests"]} />}
+      {table === "infoRequests" && <BooksToggle item={record as EntityMap["infoRequests"]} />}
+      {table === "infoRequests" && <RfiFeeds item={record as EntityMap["infoRequests"]} />}
       {table === "people" && (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold">Also written as</h3>
@@ -320,6 +326,60 @@ function ChasePanel({ table, record }: { table: "infoRequests" | "followUps"; re
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Marks an RFI item as the books (TB / GL / accounting backup): comparison steps can start once it's in. */
+function BooksToggle({ item }: { item: EntityMap["infoRequests"] }) {
+  const on = isBooksItem(item);
+  return (
+    <label className="flex items-start gap-2 rounded-xl border border-[var(--border)] px-3 py-2 text-sm">
+      <input
+        type="checkbox"
+        className="mt-1"
+        checked={on}
+        onChange={(e) => void act(e.target.checked ? "Marked as the books" : "No longer the books", (ctx) => update(ctx, "infoRequests", item.id, { books: e.target.checked }))}
+      />
+      <span>
+        This is the books (TB / GL / accounting backup)
+        <span className="block text-xs muted">
+          Steps comparing the books with another document can start as soon as this is partly in.{item.books === undefined ? (on ? " Guessed from the description." : "") : ""}
+        </span>
+      </span>
+    </label>
+  );
+}
+
+/** The work plan steps this RFI item feeds, with each step's state and owner (build brief 2.3). */
+function RfiFeeds({ item }: { item: EntityMap["infoRequests"] }) {
+  const snap = useSnapshot();
+  const e = snap?.engagements.find((x) => x.id === item.engagementId);
+  if (!snap || !e) return null;
+  const imp = rfiImpact(engagementReadiness(e, snap.planItems, snap.infoRequests, todayISO()), item);
+  if (!imp.steps.length) return null;
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold">
+        Feeds {imp.steps.length} work plan step{imp.steps.length === 1 ? "" : "s"}
+      </h3>
+      <ul className="divide-y divide-[var(--border)] rounded-xl border border-[var(--border)] text-sm">
+        {imp.steps.map((s) => (
+          <li key={s.step.id}>
+            <button className="flex w-full items-start gap-2 px-3 py-2 text-left" onClick={() => openEditor({ table: "planItems", id: s.step.id })}>
+              <span className="font-mono text-xs muted">{s.step.number}</span>
+              <span className="min-w-0 flex-1">
+                {s.step.text.split("\n")[0]}
+                <span className="block text-xs muted">
+                  {readinessLabels[s.state]}
+                  {s.step.assignee && ` · ${s.step.assignee}`}
+                  {!s.confirmed && " · suggested link"}
+                </span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

@@ -18,6 +18,7 @@ import { connectorInstructions, loadSnapshot, mcpTools, runTool, todayISO, undoB
 import { db, getSettings, store, type BridgeLogEntry } from "../db";
 import { scheduleSync } from "./sync";
 import { toast } from "./toast";
+import { announceUnlocked } from "./unlocked";
 
 export const BRIDGE_RETENTION_DAYS = 7;
 export const DEFAULT_PORT = 47820;
@@ -155,6 +156,7 @@ async function handle(
     });
   } else if (changed) {
     scheduleSync();
+    void announceUnlocked(r.batchId);
     toast({
       message: `${appName(session.client)}: ${summary}`,
       action: { label: "Undo", run: () => void undoBridgeCall(r.batchId) },
