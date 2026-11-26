@@ -14,6 +14,7 @@ import { store } from "../db";
 import { celebrate } from "./confetti";
 import { scheduleSync } from "./sync";
 import { toast } from "./toast";
+import { announceUnlocked } from "./unlocked";
 
 /**
  * Runs one or more core actions as a single undoable batch, then shows an
@@ -36,6 +37,7 @@ export async function act<T extends TableName>(
   }
 
   scheduleSync();
+  void announceUnlocked(batchId);
 
   if (message)
     toast({
@@ -96,6 +98,7 @@ export async function actTool(message: string | ((result: unknown) => string | n
     return undefined;
   }
   scheduleSync();
+  void announceUnlocked(r.batchId);
   const text = typeof message === "function" ? message(r.result) : message;
   if (text)
     toast({

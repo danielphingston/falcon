@@ -1,6 +1,6 @@
 // Invented RFI fixtures only.
 import { describe, expect, it } from "vitest";
-import { MemoryStore, applyRfi, parseRfi, planRfi, rfiDate, rfiNumber, rfiStatus, type Ctx } from "../src";
+import { MemoryStore, applyRfi, create, parseRfi, planRfi, rankStatusColumn, rfiDate, rfiNumber, rfiStatus, type Ctx } from "../src";
 
 const rfi = (rows: string[][]) => [
   { name: "Notes", rows: [["hello"]] },
@@ -198,5 +198,71 @@ describe("RFI import", () => {
 
   it("returns null when there's no request table", () => {
     expect(parseRfi([{ name: "Sheet1", rows: [["a", "b"]] }])).toBeNull();
+  });
+});
+
+describe("RFI status column and numbers (build brief 1.1)", () => {
+  const sheet = (rows: string[][]) => [{ name: "Finance", rows }];
+  const head = ["Sl. No.", "Particulars", "Status Widgetco", "V&S Status", "Remarks"];
+  const rows = [
+    ["Widget Co Pvt Ltd"],
+    head,
+    ["5", "Bank"],
+    ["5.9", "Bank statements", "Shared", "Received", ""],
+    ["5.10", "Bank confirmations", "Shared", "Partially Received", ""],
+    ["5.11", "FD statements", "", "Not Applicable ", ""],
+    ["5.12", "Odd one", "", "Awaiting CFO", ""],
+    ["5.13", "Blank status", "", "", ""],
+  ];
+
+  it("uses the firm's status column, not the client's", () => {
+    expect(rankStatusColumn("V&S Status")).toBeGreaterThan(rankStatusColumn("Status"));
+    expect(rankStatusColumn("Status Widgetco", "widgetco")).toBeLessThan(0);
+    expect(rankStatusColumn("Current Status")).toBeLessThan(0);
+    const p = parseRfi(sheet(rows))!;
+    expect(p.info.statusColumns).toEqual([{ sheet: "Finance", options: ["Status Widgetco", "V&S Status"], chosen: "V&S Status" }]);
+    expect(p.items.map((i) => [i.number, i.status ?? "-"])).toEqual([
+      ["5.9", "received"],
+      ["5.10", "partial"],
+      ["5.11", "na"],
+      ["5.12", "-"],
+      ["5.13", "-"],
+    ]);
+    // The client's column is kept as information.
+    expect(p.items[0].clientComment ?? p.items[0].fields?.map((f) => f.value).join()).toContain("Shared");
+  });
+
+  it("lists words it doesn't recognise instead of guessing, and follows the user's map", () => {
+    const p = parseRfi(sheet(rows))!;
+    expect(p.info.statusValues.find((v) => v.value === "Awaiting CFO")).toMatchObject({ status: undefined, count: 1 });
+    expect(p.warnings.join()).toMatch(/not recognised.*Awaiting CFO/);
+    const mapped = parseRfi(sheet(rows), { statusMap: { "awaiting cfo": "pending", received: "ignore" } })!;
+    expect(mapped.items.find((i) => i.number === "5.12")?.status).toBe("pending");
+    expect(mapped.items.find((i) => i.number === "5.9")?.status).toBeUndefined(); // "ignore" leaves it unchanged
+  });
+
+  it("can be told which column to use, or none", () => {
+    expect(parseRfi(sheet(rows), { statusColumns: { Finance: "Status Widgetco" } })!.items[0].status).toBe("pending"); // "Shared" = pending
+    expect(parseRfi(sheet(rows), { statusColumns: { Finance: "" } })!.items.every((i) => !i.status)).toBe(true);
+  });
+
+  it("keeps 5.10 as written and never gives two items one number", () => {
+    expect(rfiNumber("5.10", { major: 5, minor: 9 })).toEqual({ major: 5, minor: 10 });
+    expect(rfiNumber("12.20", null)).toEqual({ major: 12, minor: 20 });
+    // Two rows both written "1.10" (a copy-paste slip): the second takes the next free number.
+    const clash = parseRfi(sheet([head, ["1", "General"], ["1.10", "TB", "", "Received"], ["1.10", "GL", "", "Received"]]))!;
+    expect(clash.items.map((i) => i.number)).toEqual(["1.10", "1.11"]);
+    expect(clash.warnings.join()).toMatch(/renumbered to 1\.11/);
+  });
+
+  it("a blank status in a new version never changes an item", async () => {
+    const store = new MemoryStore();
+    const ctx: Ctx = { store, by: "app" };
+    const eng = (await create(ctx, "engagements", { name: "W" })).record.id;
+    const first = parseRfi(sheet(rows))!;
+    await applyRfi(ctx, planRfi(first, []), { engagementId: eng, today: "2026-11-26", parsed: first });
+    const blanked = rows.map((r, i) => (i >= 3 ? [r[0], r[1], r[2], "", r[4]] : r));
+    const plan = planRfi(parseRfi(sheet(blanked))!, await store.list("infoRequests"));
+    expect(plan.update).toHaveLength(0);
   });
 });

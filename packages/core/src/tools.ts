@@ -25,7 +25,7 @@ import { AREA_IDS, areaLabel, programmeView, type AreaId } from "./audit";
 import { planReviewStatuses, planStatuses, programItemStatuses, reviewOutcomes } from "./schema";
 import { namedIn, planAwaitingReview, planProgress } from "./workplan";
 import { ME, cellHas, peopleIndex } from "./people";
-import { blockerText, engagementReadiness } from "./readiness";
+import { blockerText, engagementReadiness, itemsByStepsHeldUp, readinessLabels, rfiImpact } from "./readiness";
 import { OverlayStore, diffLines, isAutoApply, propose, recordTitle } from "./proposals";
 import { periodReport, shiftWeek, timesheet, timesheetText, weekDays, weekStart } from "./time";
 import { loadSnapshot, type Store } from "./store";
@@ -783,12 +783,27 @@ export const tools = [
       const r = engagementReadiness(e, plan, snap.infoRequests, todayISO(ctx.now?.()), (id) => names.get(id));
       if (!r.steps.length) return { engagement: e.name, message: "No open work plan steps (or no work plan imported)." };
       const line = (s: (typeof r.steps)[number]) => ({ id: s.step.id, number: s.step.number, area: s.step.area, text: s.step.text.split("\n")[0], assignee: s.step.assignee });
+      // What has come in for a step (received, or partly), books marked.
+      const inHand = (s: (typeof r.steps)[number]) =>
+        s.inputs.filter((i) => i.state === "received" || i.state === "partial").map((i) => `${i.rfiNumber ? `RFI ${i.rfiNumber} ` : ""}${i.input.split("\n")[0]}${i.state === "partial" ? " (partly)" : ""}${i.books ? " [books]" : ""}`);
       return {
         engagement: e.name,
         note: "ready and blocked use only links the user confirmed. toConfirm are suggestions (by AI or the offline matcher) the user hasn't checked yet: never report them as ready or blocked; mention they still need confirming in Falcon (Readiness → To confirm).",
-        counts: { ready: r.ready.length, blocked: r.blocked.length, toConfirm: r.suggested.length, notLinked: r.unlinked.length },
-        ready: r.ready.map((s) => ({ ...line(s), inputs: s.none ? ["no client input needed"] : s.received.map((x) => (x.rfiNumber ? `RFI ${x.rfiNumber} ` : "") + x.input) })),
-        blocked: r.blocked.map((s) => ({ ...line(s), because: s.blockers.map(blockerText) })),
+        states: "ready = every input in; canStart = some input (or the books side) in, so work can begin; blocked = nothing usable in; likelyNa = every input N/A (consider marking the step N/A); noInput = needs no client input.",
+        counts: {
+          ready: r.ready.length,
+          canStart: r.canStart.length,
+          blocked: r.blocked.length,
+          likelyNa: r.likelyNa.length,
+          noInput: r.noInput.length,
+          toConfirm: r.suggested.length,
+          notLinked: r.unlinked.length,
+        },
+        ready: r.ready.map((s) => ({ ...line(s), inHand: inHand(s) })),
+        canStart: r.canStart.map((s) => ({ ...line(s), inHand: inHand(s), waitingFor: s.blockers.map(blockerText) })),
+        blocked: r.blocked.map((s) => ({ ...line(s), inHand: inHand(s), because: s.blockers.map(blockerText) })),
+        likelyNa: r.likelyNa.map(line),
+        noInput: r.noInput.map(line),
         holdingUp: r.byInput.slice(0, 20).map((g) => ({ input: blockerText(g.blocker), steps: g.steps.map((s) => s.number) })),
         toConfirm: r.suggested.map((s) => ({
           ...line(s),
@@ -798,6 +813,47 @@ export const tools = [
         })),
         notLinked: r.unlinked.map(line),
         rfi,
+      };
+    },
+  }),
+
+  tool({
+    name: "get_rfi_impact",
+    kind: "read",
+    description:
+      "For an RFI item (by number like '3.1', id, or words): every work plan step it feeds, each step's readiness state and owner. Without an item: the open RFI items holding up the most steps. Use for 'what does 1.5 unlock', 'which steps need the bank statements', 'what should we chase first'.",
+    input: z.object({
+      engagement: z.string(),
+      item: z.string().optional().describe("RFI number ('3.1'), id, or words from its description"),
+    }),
+    async run(ctx, { engagement, item }) {
+      const snap = await loadSnapshot(ctx.store);
+      const e = await resolveEngagement(ctx.store, engagement);
+      const r = engagementReadiness(e, snap.planItems, snap.infoRequests, todayISO(ctx.now?.()));
+      const rfi = snap.infoRequests.filter((x) => x.engagementId === e.id);
+      if (!item)
+        return {
+          engagement: e.name,
+          holdingUpMost: itemsByStepsHeldUp(r, rfi)
+            .slice(0, 15)
+            .map((x) => ({ number: x.item.number, item: x.item.description.split("\n")[0], status: x.item.status, steps: x.steps })),
+        };
+      const q = item.trim().replace(/^rfi\s*/i, "");
+      const hit = rfi.find((x) => x.id === q) ?? rfi.find((x) => x.number === q) ?? rfi.find((x) => x.description.toLowerCase().includes(q.toLowerCase()));
+      if (!hit) throw new Error(`No RFI item matches "${item}" on ${e.name}.`);
+      const imp = rfiImpact(r, hit);
+      return {
+        engagement: e.name,
+        item: { id: hit.id, number: hit.number, description: hit.description.split("\n")[0], status: hit.status },
+        feeds: imp.steps.length,
+        steps: imp.steps.map((s) => ({
+          number: s.step.number,
+          area: s.step.area,
+          text: s.step.text.split("\n")[0],
+          state: readinessLabels[s.state],
+          owner: s.step.assignee,
+          link: s.confirmed ? "confirmed" : "suggested, not confirmed",
+        })),
       };
     },
   }),

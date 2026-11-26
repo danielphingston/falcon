@@ -1064,6 +1064,29 @@
    }
   },
   {
+   "name": "get_rfi_impact",
+   "description": "For an RFI item (by number like '3.1', id, or words): every work plan step it feeds, each step's readiness state and owner. Without an item: the open RFI items holding up the most steps. Use for 'what does 1.5 unlock', 'which steps need the bank statements', 'what should we chase first'.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "engagement": {
+      "type": "string"
+     },
+     "item": {
+      "description": "RFI number ('3.1'), id, or words from its description",
+      "type": "string"
+     }
+    },
+    "required": [
+     "engagement"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
    "name": "set_step_inputs",
    "description": "Suggest which client inputs work plan steps need, for the Readiness page: RFI item numbers, inputs that aren't on the RFI (e.g. 'GSTR-2B for the period'), or that a step needs no client input. Several steps per call. These are suggestions: they show under To confirm and don't count until the user confirms them in Falcon (only the user can confirm). Steps the user already confirmed or set by hand are skipped. Get step ids and RFI numbers from get_readiness with includeRfi.",
    "inputSchema": {

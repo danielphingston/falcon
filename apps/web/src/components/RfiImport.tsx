@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useRef, useState } from "react";
-import { applyRfi, matchName, parseRfi, planRfi, type InfoRequest, type ParsedRfi, type Person } from "@falcon/core";
+import { applyRfi, matchName, parseRfi, planRfi, statusKey, type InfoRequest, type ParsedRfi, type Person, type RfiParseOptions, type SheetData } from "@falcon/core";
+import { useSnapshot } from "../lib/hooks";
 import { act } from "../lib/act";
 import { readSpreadsheet } from "../lib/spreadsheet";
 import { Icon } from "./Icon";
@@ -33,6 +34,15 @@ export function RfiImport({
   const [busy, setBusy] = useState(false);
   const [from, setFrom] = useState("");
   const [showSections, setShowSections] = useState(false);
+  // The file's sheets and the status choices; changing a choice re-reads the sheets at once.
+  const [sheets, setSheets] = useState<SheetData[] | null>(null);
+  const [opts, setOpts] = useState<RfiParseOptions>({});
+  const saved = useSnapshot()?.engagements.find((e) => e.id === engagementId)?.rfiInfo;
+  const reparse = (sh: SheetData[], o: RfiParseOptions) => {
+    const p = parseRfi(sh, o);
+    if (p) setParsed(p);
+    setOpts(o);
+  };
   const plan = useMemo(() => (parsed ? planRfi(parsed, existing) : null), [parsed, existing]);
 
   const read = async (f: File | undefined) => {
@@ -40,7 +50,12 @@ export function RfiImport({
     setBusy(true);
     setError(null);
     try {
-      const p = parseRfi(await readSpreadsheet(f, { maxBytes: 40 * 1024 * 1024 }));
+      const sh = await readSpreadsheet(f, { maxBytes: 40 * 1024 * 1024 });
+      // Start from what was chosen for this engagement's last IRL, if anything.
+      const o: RfiParseOptions = { statusColumns: saved?.statusColumns, statusMap: saved?.statusMap };
+      const p = parseRfi(sh, o);
+      setSheets(sh);
+      setOpts(o);
       if (!p) throw new Error("Couldn't find a request list in this file. It needs a header row with Particulars (and Sl No, Status or Date of request).");
       setParsed(p);
       setFile(f.name);
@@ -70,6 +85,7 @@ export function RfiImport({
           resolvePerson: (name) => matchName(name, clients)?.id,
           file,
           parsed: parsed ?? undefined,
+          statusMap: opts.statusMap,
         }),
     );
     if (res || n === 0) close();
@@ -152,6 +168,8 @@ export function RfiImport({
               ))}
             </div>
 
+            {sheets && <StatusChoices parsed={parsed} opts={opts} onChange={(o) => reparse(sheets, o)} />}
+
             <div className="grid grid-cols-3 gap-2 text-center">
               <Stat n={plan.create.length} label="new" />
               <Stat n={plan.update.length} label="to update" />
@@ -208,6 +226,87 @@ export function RfiImport({
         )
       )}
     </Sheet>
+  );
+}
+
+const STATUS_CHOICES: { value: string; label: string }[] = [
+  { value: "received", label: "Received" },
+  { value: "partial", label: "Partially received" },
+  { value: "pending", label: "Pending" },
+  { value: "na", label: "N/A" },
+  { value: "ignore", label: "Leave unchanged" },
+];
+
+/**
+ * Which column is the status on each sheet (the firm's, not the client's),
+ * and what each status word means. Remembered for this engagement's next IRL.
+ */
+function StatusChoices({ parsed, opts, onChange }: { parsed: ParsedRfi; opts: RfiParseOptions; onChange: (o: RfiParseOptions) => void }) {
+  const cols = parsed.info.statusColumns.filter((c) => c.options.length);
+  const values = parsed.info.statusValues;
+  const unknown = values.filter((v) => !v.status).length;
+  const [open, setOpen] = useState(unknown > 0);
+  if (!cols.length && !values.length) return null;
+  return (
+    <div className="rounded-xl border border-[var(--border)] px-3 py-2 text-sm">
+      <button className="flex w-full items-center justify-between text-left" onClick={() => setOpen((v) => !v)}>
+        <span className="font-semibold">
+          Status: {cols.map((c) => `${c.sheet} → ${c.chosen || "none"}`).join(" · ") || "none"}
+        </span>
+        <span className="text-xs text-[var(--accent)]">{unknown ? `${unknown} not recognised` : open ? "Hide" : "Change"}</span>
+      </button>
+      {open && (
+        <div className="mt-2 space-y-3">
+          {cols.map((c) => (
+            <label key={c.sheet} className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs">
+                Status column on <b>{c.sheet}</b>
+              </span>
+              <select
+                className="input w-auto py-1 text-sm"
+                value={c.chosen}
+                onChange={(e) => onChange({ ...opts, statusColumns: { ...opts.statusColumns, [c.sheet]: e.target.value } })}
+                aria-label={`Status column on ${c.sheet}`}
+              >
+                {c.options.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+                <option value="">None: don't set statuses from this sheet</option>
+              </select>
+            </label>
+          ))}
+          {values.length > 0 && (
+            <div>
+              <p className="mb-1 text-xs muted">What each status word means. Blank cells never change an item.</p>
+              <ul className="divide-y divide-[var(--border)]">
+                {values.map((v) => (
+                  <li key={v.value} className={`flex flex-wrap items-center justify-between gap-2 py-1.5 ${v.status ? "" : "text-amber-700 dark:text-amber-300"}`}>
+                    <span>
+                      “{v.value}” <span className="text-xs muted">· {v.count}</span>
+                    </span>
+                    <select
+                      className="input w-auto py-1 text-sm"
+                      value={v.status ?? ""}
+                      onChange={(e) => onChange({ ...opts, statusMap: { ...opts.statusMap, [statusKey(v.value)]: e.target.value as never } })}
+                      aria-label={`Meaning of ${v.value}`}
+                    >
+                      {!v.status && <option value="">Not recognised: pick one</option>}
+                      {STATUS_CHOICES.map((c) => (
+                        <option key={c.value} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
