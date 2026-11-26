@@ -2,7 +2,8 @@
 
 - **One set of AI tools.** Everything an AI can do is a tool in `packages/core/src/tools.ts`, run through `runTool()`. The Gemini chat, the MCP bridge and AI buttons in the app all use these; there are no separate AI code paths.
 - **Writes go through actions.** Tools change data only via `create` / `update` / `remove` in `packages/core/src/actions.ts`, so every change is logged and one tool call is one undo batch. Undo is field-level. Every write tool must be covered in `packages/core/test/undoAll.test.ts`.
-- **AI suggests, the user confirms.** Links an AI or the offline matcher makes are suggestions. Only links the user confirms count as Ready or Blocked, and no tool may confirm on the user's behalf.
+- **AI proposes, the user decides.** AI callers run tools with `propose: true`: every write becomes a proposal in the Inbox (`proposals.ts`, dry run on an overlay store), applied only when the user accepts in the app (`acceptProposal` refuses any actor but `app`; there is no approve tool). Only the auto-apply types the user ticks (task dates, chase logs) apply directly. Step links from an AI or the matcher are also suggestions until the user confirms them.
+- **People resolve when read.** Names typed in sheets ("JK", "A/B", "Team") map to people through names, initials and aliases (`people.ts`); never copy owner ids onto records just to match names.
 - **Device-only data stays out of sync and AI.** Firm checklists, private review points and the MCP session log are kept out of `tableNames`: never synced, backed up or sent to an AI.
 - **No model fallback.** Gemini calls retry only on the user's chosen model.
 - **The bridge only relays.** `apps/bridge` holds no data or tool logic; tools come from the app (it ships a copy of the tool list for before Falcon is open, kept in step by `npm run bridge:tools`). It's Node with no dependencies (no native binary), listens on 127.0.0.1 only, and needs the pairing code.

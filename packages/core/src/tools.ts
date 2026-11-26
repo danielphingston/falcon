@@ -24,7 +24,9 @@ import { matchName, nameKey } from "./teamImport";
 import { AREA_IDS, areaLabel, programmeView, type AreaId } from "./audit";
 import { planReviewStatuses, planStatuses, programItemStatuses, reviewOutcomes } from "./schema";
 import { namedIn, planAwaitingReview, planProgress } from "./workplan";
+import { ME, cellHas, peopleIndex } from "./people";
 import { blockerText, engagementReadiness } from "./readiness";
+import { OverlayStore, diffLines, isAutoApply, propose, recordTitle } from "./proposals";
 import { periodReport, shiftWeek, timesheet, timesheetText, weekDays, weekStart } from "./time";
 import { loadSnapshot, type Store } from "./store";
 import {
@@ -647,7 +649,10 @@ export const tools = [
       if (!isMeRef) p = await resolvePerson(ctx, person).catch(() => undefined);
       const fullName = isMeRef ? settings.myName : (p?.name ?? person);
       const names = [fullName, person];
-      const named = (cell: string | undefined) => names.some((n) => n && n !== "Me" && namedIn(cell, n));
+      // Names in the sheet resolve to people through names, initials and aliases ("JK" → me, "Shahid/Sai Teja" → both).
+      const ix = peopleIndex(snap.people, settings);
+      const who = isMeRef ? ME : p?.id;
+      const named = (cell: string | undefined) => (who ? cellHas(cell, who, ix) : false) || names.some((n) => n && n !== "Me" && namedIn(cell, n));
       const live = new Set(snap.engagements.filter((x) => !x.deleted && x.status !== "closed").map((x) => x.id));
       const inScope = (id: string | undefined) => (e ? id === e.id : !!id && live.has(id));
       const engName = new Map(snap.engagements.map((x) => [x.id, x.name]));
@@ -656,7 +661,10 @@ export const tools = [
       const steps = snap.planItems.filter((i) => !i.deleted && i.applicable && inScope(i.engagementId)).sort((a, b) => a.engagementId.localeCompare(b.engagementId) || a.order - b.order);
       const mySteps = steps.filter((i) => (p && i.assigneeId === p.id) || named(i.assignee));
       const openSteps = mySteps.filter((i) => i.status !== "closed");
-      const toReview = steps.filter((i) => ((p && i.reviewerId === p.id) || named(i.reviewer)) && planAwaitingReview(i, hasReview.get(i.engagementId) ?? false));
+      const reviewing = steps.filter((i) => (p && i.reviewerId === p.id) || named(i.reviewer));
+      const toReview = reviewing.filter((i) => planAwaitingReview(i, hasReview.get(i.engagementId) ?? false));
+      // Every step they review that isn't signed off yet (whatever its execution status).
+      const reviewOpen = reviewing.filter((i) => i.reviewStatus !== "closed");
       const wps = snap.workpapers.filter((w) => !w.deleted && inScope(w.engagementId));
       const wpDone = (w: (typeof wps)[number]) => w.status === "final" || w.status === "cleared";
       const prepares = wps.filter((w) => (isMeRef ? w.myRole === "preparer" : p && w.preparerId === p.id));
@@ -675,6 +683,7 @@ export const tools = [
           workPlanStepsTotal: mySteps.length,
           workPlanStepsByStatus: Object.fromEntries(["open", "wip", "review", "closed"].map((s) => [s, mySteps.filter((i) => i.status === s).length])),
           workPlanStepsWaitingForTheirReview: toReview.length,
+          workPlanStepsTheyReview: reviewOpen.length,
           workpapersToPrepare: prepares.filter((w) => !wpDone(w)).length,
           workpapersToReview: reviews.filter((w) => !wpDone(w)).length,
           openTasks: tasks.filter((t) => t.status !== "done").length,
@@ -683,6 +692,16 @@ export const tools = [
         },
         workPlanSteps: pick(mySteps, (i) => i.status === "closed").map((i) => ({ id: i.id, engagement: engName.get(i.engagementId), number: i.number, area: i.area, text: i.text.split("\n")[0], status: i.status, reviewStatus: i.reviewStatus, sharedWith: i.assignee })),
         stepsToReview: toReview.map((i) => ({ id: i.id, engagement: engName.get(i.engagementId), number: i.number, area: i.area, text: i.text.split("\n")[0], by: i.assignee })),
+        stepsTheyReview: pick(reviewing, (i) => i.reviewStatus === "closed").map((i) => ({
+          id: i.id,
+          engagement: engName.get(i.engagementId),
+          number: i.number,
+          area: i.area,
+          text: i.text.split("\n")[0],
+          by: i.assignee,
+          status: i.status,
+          reviewStatus: i.reviewStatus ?? "open",
+        })),
         workpapers: pick([...new Set([...prepares, ...reviews])], wpDone).map((w) => ({ id: w.id, ref: w.ref, title: w.title, engagement: engName.get(w.engagementId), status: w.status, role: prepares.includes(w) ? "prepares" : "reviews" })),
         tasks: pick(tasks, (t) => t.status === "done").map((t) => ({ id: t.id, title: t.title, due: t.due, status: t.status })),
         reviewPoints: pick(points, (r) => r.status === "cleared").map((r) => ({ id: r.id, text: r.text, status: r.status })),
@@ -895,6 +914,34 @@ export const tools = [
   }),
 
   tool({
+    name: "list_proposals",
+    kind: "read",
+    description:
+      "Changes waiting for the user's approval (your proposals and those from imports), with what each would change. You can't approve or reject them; only the user can, in Falcon's Inbox. Use to check whether earlier proposals were accepted.",
+    input: z.object({
+      status: z.enum(["pending", "decided", "all"]).optional().describe("pending (default), decided (accepted/rejected/stale/void) or all"),
+      limit: z.number().int().min(1).max(50).optional(),
+    }),
+    async run(ctx, { status, limit }) {
+      const all = (await ctx.store.list("proposals")).filter((p) => !p.deleted).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      const pick = all.filter((p) => (status ?? "pending") === "all" || (status === "decided" ? p.status !== "pending" : p.status === "pending"));
+      return {
+        count: pick.length,
+        proposals: pick.slice(0, limit ?? 20).map((p) => ({
+          id: p.id,
+          status: p.status,
+          from: p.source,
+          summary: p.summary,
+          proposedAt: p.createdAt,
+          decidedAt: p.decidedAt,
+          reason: p.reason,
+          changes: p.changes.slice(0, 10).map((c) => ({ table: c.table, action: c.action, record: recordTitle(c.table, c.after), fields: diffLines(c).slice(0, 8) })),
+        })),
+      };
+    },
+  }),
+
+  tool({
     name: "undo_last",
     kind: "write",
     description: "Undo the most recent change made through this chat.",
@@ -913,6 +960,8 @@ export interface ToolCallResult {
   result?: unknown;
   error?: string;
   batchId: string;
+  /** Set when the call's changes were queued for the user's approval instead of applied. */
+  proposalId?: string;
 }
 
 /** Validates input and runs a tool. All writes from one call share an undo batch. */
@@ -928,11 +977,45 @@ export async function runTool(
   if (!parsed.success)
     return { ok: false, error: `Invalid input: ${parsed.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`, batchId };
   try {
+    if (ctx.propose && def.kind !== "read") return await proposeTool(ctx, def, parsed.data, batchId);
     const result = await ctx.store.transaction(() => def.run({ ...ctx, batchId }, parsed.data));
     return { ok: true, result, batchId };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e), batchId };
   }
+}
+
+/**
+ * Propose mode (AI callers): run the tool on an overlay that keeps its writes,
+ * then queue them as one proposal for the user. Calls that only move task
+ * dates or log chases (if the user allows) apply straight away.
+ */
+async function proposeTool(ctx: Omit<Ctx, "batchId">, def: ToolDef, input: unknown, batchId: string): Promise<ToolCallResult> {
+  const overlay = new OverlayStore(ctx.store);
+  const preview = await def.run({ ...ctx, store: overlay, batchId }, input);
+  const changes = overlay.captured();
+  if (!changes.length && !overlay.undone.length) return { ok: true, result: preview, batchId };
+  const settings = await ctx.store.getSettings();
+  if (!overlay.undone.length && isAutoApply(changes, settings.autoApply)) {
+    const result = await ctx.store.transaction(() => def.run({ ...ctx, batchId }, input));
+    return { ok: true, result, batchId };
+  }
+  const source = ctx.by === "connector" ? "connector" : ctx.by === "chat" ? "chat" : "app";
+  const p = await ctx.store.transaction(() =>
+    propose({ ...ctx, by: ctx.by }, { source, tool: def.name, changes, undoes: overlay.undone, opKey: `${def.name}:${JSON.stringify(input)}` }),
+  );
+  return {
+    ok: true,
+    batchId,
+    proposalId: p.id,
+    result: {
+      proposed: true,
+      proposalId: p.id,
+      summary: p.summary,
+      note: "Nothing has changed yet: this is waiting for the user's approval in Falcon (Inbox). You can't approve it. Records it would create don't exist until then, so put related changes in one call.",
+      wouldReturn: preview,
+    },
+  };
 }
 
 /** JSON Schema for each tool, for provider adapters. */

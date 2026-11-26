@@ -15,6 +15,8 @@ import {
   useBridge,
 } from "../lib/bridge";
 import { toast } from "../lib/toast";
+import { useSnapshot } from "../lib/hooks";
+import { TLink } from "../components/TLink";
 
 const RELEASES = "https://github.com/danielphingston/falcon/releases/latest/download";
 
@@ -158,6 +160,18 @@ export function ConnectionsPage() {
   );
 }
 
+/** Where a proposed change stands: waiting in the Inbox, accepted, rejected… */
+function ProposalStatus({ id }: { id: string }) {
+  const p = useSnapshot()?.proposals.find((x) => x.id === id);
+  const status = p?.status ?? "pending";
+  const tone: Tone = status === "accepted" ? "green" : status === "pending" ? "amber" : status === "rejected" ? "slate" : "red";
+  return (
+    <TLink to="/inbox" title="Open the Inbox">
+      <Pill tone={tone}>{status === "pending" ? "Waiting in Inbox" : status.charAt(0).toUpperCase() + status.slice(1)}</Pill>
+    </TLink>
+  );
+}
+
 function Snippet({ label, text, onCopy }: { label: string; text: string; onCopy: () => void }) {
   return (
     <div className="rounded-xl border border-[var(--border)]">
@@ -227,8 +241,9 @@ function SessionLog() {
           const changes = s.calls.filter((c) => c.changed);
           const failed = s.calls.filter((c) => !c.ok).length;
           const isUndo = (c: BridgeLogEntry) => c.tool === "undo_last" && c.ok;
-          const reads = s.calls.filter((c) => c.ok && !c.changed && !isUndo(c)).length;
-          const shown = s.calls.filter((c) => showReads || c.changed || !c.ok || isUndo(c));
+          const reads = s.calls.filter((c) => c.ok && !c.changed && !c.proposalId && !isUndo(c)).length;
+          const proposed = s.calls.filter((c) => c.proposalId).length;
+          const shown = s.calls.filter((c) => showReads || c.changed || c.proposalId || !c.ok || isUndo(c));
           const open = openId === s.id || (openId === null && s === sessions[0]);
           return (
             <div key={s.id} className="card">
@@ -246,6 +261,7 @@ function SessionLog() {
                   <Pill tone={changes.length ? "indigo" : "slate"}>
                     {changes.length} change{changes.length === 1 ? "" : "s"}
                   </Pill>
+                  {proposed > 0 && <Pill tone="amber">{proposed} proposed</Pill>}
                   <Pill>{reads} read{reads === 1 ? "" : "s"}</Pill>
                   {failed > 0 && <Pill tone="red">{failed} failed</Pill>}
                 </div>
@@ -270,6 +286,8 @@ function SessionLog() {
                         <div className="flex shrink-0 items-center gap-1">
                           {!c.ok ? (
                             <Pill tone="red">Failed</Pill>
+                          ) : c.proposalId ? (
+                            <ProposalStatus id={c.proposalId} />
                           ) : isUndo(c) ? (
                             <Pill tone="amber">Undo</Pill>
                           ) : c.changed ? (

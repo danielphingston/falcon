@@ -1,12 +1,13 @@
 import { useRef, useState, type ReactNode } from "react";
-import { BACKUP_VERSION, GEMINI_OAUTH_SCOPE, listGeminiModels, mergeRecords, parseBackup, tableNames, type Backup, type Settings } from "@falcon/core";
+import { BACKUP_VERSION, GEMINI_OAUTH_SCOPE, deleteOrphans, findOrphans, listGeminiModels, mergeRecords, parseBackup, tableNames, type Backup, type Settings } from "@falcon/core";
 import { chatAuth, clearChat, friendlyError } from "../lib/chat";
 import { Icon } from "../components/Icon";
+import { AliasEditor } from "../components/AliasEditor";
 import { TLink } from "../components/TLink";
 import { Segmented } from "../components/ui";
 import { db, getSettings, saveSettings } from "../db";
 import { act } from "../lib/act";
-import { useSettings } from "../lib/hooks";
+import { useSettings, useSnapshot } from "../lib/hooks";
 import { loadSampleData } from "../lib/sample";
 import { useLiveQuery } from "dexie-react-hooks";
 import { SyncBadge } from "../components/SyncBadge";
@@ -74,6 +75,14 @@ export function SettingsPage() {
         <Row label="Your name" hint="Used in greetings and chase emails">
           <input className="input max-w-56" defaultValue={s.myName === "Me" ? "" : s.myName} placeholder="Your name" onBlur={(e) => set({ myName: e.target.value.trim() || "Me" })} />
         </Row>
+        <div className="px-4 py-3">
+          <p className="mb-2 text-sm font-medium">Also written as</p>
+          <AliasEditor
+            aliases={s.myAliases}
+            onChange={(myAliases) => void set({ myAliases })}
+            hint="How work plans and sheets write you (e.g. JK). Steps with these names count as yours. Initials of your name match on their own."
+          />
+        </div>
       </Group>
 
       <Group title="Working week">
@@ -175,6 +184,7 @@ export function SettingsPage() {
       <FirmGroup />
 
       <Group title="Data">
+        <OrphanCleanup />
         <Row label="Back up" hint="Download everything as a JSON file">
           <button className="btn btn-soft btn-sm" onClick={exportJson}>
             <Icon name="download" size={14} /> Export
@@ -396,6 +406,25 @@ function AiGroup({ s }: { s: Settings }) {
           ))}
         </select>
       </Row>
+      <Row label="AI changes" hint="Changes from the Assistant or Claude wait in your Inbox. Ticked kinds apply straight away (with Undo).">
+        <div className="flex flex-col items-end gap-1 text-sm">
+          {(
+            [
+              ["taskDates", "Moving task dates/times"],
+              ["chaseLogs", "Logging chases"],
+            ] as const
+          ).map(([k, lbl]) => (
+            <label key={k} className="flex items-center gap-2">
+              {lbl}
+              <input
+                type="checkbox"
+                checked={s.autoApply.includes(k)}
+                onChange={(e) => void saveSettings({ autoApply: e.target.checked ? [...new Set([...s.autoApply, k])] : s.autoApply.filter((x) => x !== k) })}
+              />
+            </label>
+          ))}
+        </div>
+      </Row>
       <Row label="Check connection" hint="Lists the models your access allows (free)">
         <button className="btn btn-soft btn-sm" onClick={check} disabled={checking}>
           <Icon name="refresh" size={14} /> {checking ? "Checking…" : "Check"}
@@ -512,5 +541,75 @@ function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
     <button role="switch" aria-checked={on} onClick={() => onChange(!on)} className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${on ? "bg-brand-600" : "bg-slate-300 dark:bg-slate-700"}`}>
       <span className={`absolute left-0.5 top-0.5 size-6 rounded-full bg-white shadow transition-transform duration-200 ${on ? "translate-x-5" : "translate-x-0"}`} />
     </button>
+  );
+}
+
+/**
+ * Records left by engagements that no longer exist (RFI copies, a test trial
+ * balance…). Lists them per missing engagement; deletes the ticked groups
+ * after you confirm, as one undoable action.
+ */
+function OrphanCleanup() {
+  const snap = useSnapshot();
+  const tombstones = useLiveQuery(async () => (await db.engagements.toArray()).filter((e) => e.deleted).map((e) => ({ id: e.id, name: e.name })), []);
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  if (!snap) return null;
+  const groups = findOrphans(snap, tombstones ?? []);
+  const total = groups.reduce((a, g) => a + g.records.length, 0);
+  const nouns: Record<string, string> = { infoRequests: "RFI items", planItems: "plan steps", programItems: "programme steps", trialBalances: "trial balances", workpapers: "work papers", reviewPoints: "review points", tasks: "tasks", followUps: "follow-ups", timeEntries: "time entries", workstreams: "workstreams" };
+  const chosen = groups.filter((g) => picked.has(g.engagementId));
+  const n = chosen.reduce((a, g) => a + g.records.length, 0);
+  return (
+    <>
+      <Row label="Clean up" hint={total ? `${total} records belong to engagements that no longer exist` : "No records left from deleted engagements"}>
+        <button className="btn btn-soft btn-sm" disabled={!total} onClick={() => setOpen((v) => !v)}>
+          {open ? "Hide" : "Review"}
+        </button>
+      </Row>
+      {open && total > 0 && (
+        <div className="space-y-2 px-4 pb-3">
+          <p className="text-xs muted">Closed and on-hold engagements are kept. These records point to an engagement that was deleted or never existed on this device. Tick what to delete.</p>
+          {groups.map((g) => (
+            <label key={g.engagementId} className="flex cursor-pointer items-start gap-2 rounded-xl border border-[var(--border)] p-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={picked.has(g.engagementId)}
+                onChange={() =>
+                  setPicked((s) => {
+                    const x = new Set(s);
+                    if (x.has(g.engagementId)) x.delete(g.engagementId);
+                    else x.add(g.engagementId);
+                    return x;
+                  })
+                }
+              />
+              <span className="min-w-0">
+                <b>{g.formerName ? `“${g.formerName}” (deleted)` : `Unknown engagement …${g.engagementId.slice(-6)}`}</b>
+                <span className="block text-xs muted">
+                  {Object.entries(g.counts)
+                    .map(([t, c]) => `${c} ${nouns[t] ?? t}`)
+                    .join(" · ")}
+                </span>
+                <span className="block truncate text-xs muted">e.g. {g.records.slice(0, 3).map((r) => r.title || "untitled").join("; ")}</span>
+              </span>
+            </label>
+          ))}
+          <button
+            className="btn btn-sm bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50"
+            disabled={!n}
+            onClick={() => {
+              if (!confirm(`Delete ${n} records from ${chosen.length} missing engagement${chosen.length === 1 ? "" : "s"}? They're removed on every synced device. You can undo straight after.`)) return;
+              void act(`Deleted ${n} leftover records`, async (ctx) => {
+                await deleteOrphans(ctx, chosen);
+              }).then(() => setPicked(new Set()));
+            }}
+          >
+            Delete {n || ""} selected
+          </button>
+        </div>
+      )}
+    </>
   );
 }

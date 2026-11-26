@@ -19,3 +19,6 @@ export { MemoryStore } from "./memoryStore";
 export * from "./rfi";
 export * from "./workplan";
 export * from "./readiness";
+export * from "./proposals";
+export * from "./people";
+export * from "./hygiene";

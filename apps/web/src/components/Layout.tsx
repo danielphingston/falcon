@@ -23,6 +23,7 @@ import { Toaster } from "./ui";
 
 const nav: { to: string; label: string; icon: IconName }[] = [
   { to: "/", label: "Today", icon: "today" },
+  { to: "/inbox", label: "Inbox", icon: "inbox" },
   { to: "/calendar", label: "Calendar", icon: "calendar" },
   { to: "/engagements", label: "Engagements", icon: "briefcase" },
   { to: "/followups", label: "Follow-ups", icon: "inbox" },
@@ -36,7 +37,7 @@ const nav: { to: string; label: string; icon: IconName }[] = [
   { to: "/people", label: "People", icon: "users" },
   { to: "/settings", label: "Settings", icon: "settings" },
 ];
-const moreRoutes = ["/more", "/review", "/readiness", "/chat", "/connections", "/time", "/reports", "/progress", "/people", "/settings"];
+const moreRoutes = ["/more", "/inbox", "/review", "/readiness", "/chat", "/connections", "/time", "/reports", "/progress", "/people", "/settings"];
 /** Phone tab bar: the first four plus More. */
 const phoneTabs = ["/", "/calendar", "/engagements", "/followups"];
 
@@ -47,6 +48,7 @@ export function Layout() {
   const settings = useSettings();
   const snap = useSnapshot();
   const today = useToday();
+  const pendingCount = (snap?.proposals ?? []).filter((p) => p.status === "pending").length;
   useTheme(settings.theme, settings.motion);
   useGameEngine(snap, today, settings);
   useTimerWatcher();
@@ -82,6 +84,11 @@ export function Layout() {
                 {active && <motion.span layoutId="nav-active" className="absolute inset-0 rounded-xl bg-brand-50 dark:bg-indigo-950/60" transition={{ type: "spring", stiffness: 500, damping: 40 }} />}
                 <Icon name={n.icon} size={19} className="relative" />
                 <span className="relative">{n.label}</span>
+                {n.to === "/inbox" && pendingCount > 0 && (
+                  <span className="relative ml-auto rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-white" title={`${pendingCount} change${pendingCount === 1 ? "" : "s"} waiting for you`}>
+                    {pendingCount}
+                  </span>
+                )}
               </TLink>
             );
           })}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { labels, liveEngagementIds, planReviewQueue, wpStatuses, type WorkPaper } from "@falcon/core";
+import { ME, cellHas, labels, liveEngagementIds, peopleIndex, planReviewQueue, wpStatuses, type WorkPaper } from "@falcon/core";
 import { openEditor } from "../components/Editor";
 import { Icon } from "../components/Icon";
 import { StepRow } from "../components/WorkPlan";
@@ -27,7 +27,8 @@ export function ReviewPage() {
   const waiting = snap.workpapers.filter((w) => w.myRole === "reviewer" && live.has(w.engagementId) && (w.status === "prepared" || w.status === "in_review")).length;
   const toFix = snap.workpapers.filter((w) => w.myRole === "preparer" && live.has(w.engagementId) && w.status === "points_raised").length;
   // Work plan steps waiting for my review, grouped by engagement.
-  const steps = planReviewQueue(snap.planItems, snap.engagements, live, settings.myName).sort((a, b) => a.order - b.order);
+  const ix = peopleIndex(snap.people, settings);
+  const steps = planReviewQueue(snap.planItems, snap.engagements, live, settings.myName, (cell) => cellHas(cell, ME, ix)).sort((a, b) => a.order - b.order);
   const stepGroups = snap.engagements
     .map((e) => ({ e, items: steps.filter((s) => s.engagementId === e.id) }))
     .filter((g) => g.items.length);

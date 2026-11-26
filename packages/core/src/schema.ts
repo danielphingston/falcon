@@ -23,6 +23,8 @@ export const personFields = z.object({
   org: z.string().optional(),
   /** e.g. "Article", "Senior", "Associate". */
   designation: z.string().optional(),
+  /** Other ways this person is written in sheets: "JK", "SaiTeja", "Majeed". */
+  aliases: z.array(z.string()).optional(),
   email: z.string().optional(),
   phone: z.string().optional(),
   notes: z.string().optional(),
@@ -347,6 +349,39 @@ export const achievementFields = z.object({
   earnedAt: isoDateTime,
 });
 
+// ---------- Proposals (changes waiting for the user's approval) ----------
+export const proposalSources = ["chat", "connector", "import", "matcher", "app"] as const;
+export const proposalStatuses = ["pending", "accepted", "rejected", "stale", "void"] as const;
+export const proposalFields = z.object({
+  /** Who proposed it: the in-app chat, Claude via the bridge, an import or the matcher. */
+  source: z.enum(proposalSources),
+  /** The tool that produced it, when an AI did. */
+  tool: z.string().optional(),
+  /** One line for the Inbox, e.g. "Create task “Call client”". */
+  summary: z.string(),
+  engagementId: z.string().optional(),
+  /** Each record the proposal changes, with the version it was based on. */
+  changes: z.array(
+    z.object({
+      table: z.string(),
+      recordId: z.string(),
+      action: z.enum(["create", "update", "delete"]),
+      before: z.record(z.string(), z.unknown()).nullable(),
+      after: z.record(z.string(), z.unknown()),
+    }),
+  ),
+  /** Change-log entries the proposal would mark undone (an AI's undo_last). */
+  undoesChanges: z.array(z.string()).optional(),
+  status: z.enum(proposalStatuses).default("pending"),
+  decidedAt: isoDateTime.optional(),
+  /** Undo batch of the applied change, once accepted. */
+  batchId: z.string().optional(),
+  /** Why it couldn't be applied (stale / void). */
+  reason: z.string().optional(),
+  /** Same tool + input from the same source, so a retried call doesn't queue a duplicate. */
+  opKey: z.string().optional(),
+});
+
 export const fieldSchemas = {
   people: personFields,
   engagements: engagementFields,
@@ -363,6 +398,7 @@ export const fieldSchemas = {
   trialBalances: trialBalanceFields,
   programItems: programItemFields,
   planItems: planItemFields,
+  proposals: proposalFields,
 } as const;
 
 export type TableName = keyof typeof fieldSchemas;
@@ -384,6 +420,7 @@ export const entitySchemas = {
   trialBalances: trialBalanceFields.extend(base),
   programItems: programItemFields.extend(base),
   planItems: planItemFields.extend(base),
+  proposals: proposalFields.extend(base),
 } as const;
 
 export type EntityMap = { [K in TableName]: z.output<(typeof entitySchemas)[K]> };
@@ -407,6 +444,7 @@ export type TrialBalance = EntityMap["trialBalances"];
 export type TbLine = TrialBalance["lines"][number];
 export type ProgramItem = EntityMap["programItems"];
 export type PlanItem = EntityMap["planItems"];
+export type Proposal = EntityMap["proposals"];
 
 /** Tables holding the user's work (excludes system-written gamification state). */
 export const workTables = [
@@ -470,6 +508,12 @@ export const settingsSchema = z.object({
   calendarDueDates: z.boolean().default(false),
   /** Gemini model for the in-app chat. */
   geminiModel: z.string().default("gemini-3.8-flash"),
+  /** Other ways the user is written in sheets ("JK"), so they resolve to "me". */
+  myAliases: z.array(z.string()).default([]),
+  /** Extra names that mean a group, not a person (besides "Team", "All"…). */
+  groupNames: z.array(z.string()).default([]),
+  /** AI changes that apply without waiting in the Inbox (everything else is proposed). */
+  autoApply: z.array(z.enum(["taskDates", "chaseLogs"])).default(["taskDates", "chaseLogs"]),
 });
 
 /** Settings that follow the user across devices; the rest (theme, Google setup…) stay per device. */
@@ -485,6 +529,9 @@ export const syncedSettingsKeys = [
   "calendarAlerts",
   "calendarKeyDates",
   "calendarDueDates",
+  "autoApply",
+  "myAliases",
+  "groupNames",
 ] as const satisfies readonly (keyof z.output<typeof settingsSchema>)[];
 export type Settings = z.output<typeof settingsSchema>;
 export const defaultSettings = (): Settings => settingsSchema.parse({});

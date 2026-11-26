@@ -17,6 +17,8 @@ export interface Ctx {
   /** Changes sharing a batch are undone together. */
   batchId?: string;
   now?: () => Date;
+  /** Writes become proposals for the user to accept (AI callers), except auto-apply types. */
+  propose?: boolean;
 }
 
 export const newId = (): string => crypto.randomUUID();
@@ -122,6 +124,17 @@ export async function update<T extends TableName>(
   await ctx.store.put(table, record);
   const change = await logChange(ctx, table, "update", before, record);
   return { record, before, change };
+}
+
+/**
+ * Writes a finished record as it is (validated) and logs the change: used to
+ * apply an accepted proposal, whose records were built by the tools already.
+ */
+export async function applyRecord(ctx: Ctx, table: TableName, action: Change["action"], before: AnyEntity | null, after: Record<string, unknown>): Promise<AnyEntity> {
+  const record = entitySchemas[table].parse({ ...after, updatedAt: nowOf(ctx).toISOString(), updatedBy: ctx.by }) as AnyEntity;
+  await ctx.store.put(table, record as never);
+  await logChange(ctx, table, action, before, record);
+  return record;
 }
 
 export async function remove<T extends TableName>(ctx: Ctx, table: T, id: string): Promise<Result<T>> {
