@@ -5,7 +5,7 @@
 - **AI suggests, the user confirms.** Links an AI or the offline matcher makes are suggestions. Only links the user confirms count as Ready or Blocked, and no tool may confirm on the user's behalf.
 - **Device-only data stays out of sync and AI.** Firm checklists, private review points and the MCP session log are kept out of `tableNames`: never synced, backed up or sent to an AI.
 - **No model fallback.** Gemini calls retry only on the user's chosen model.
-- **The bridge only relays.** `apps/bridge` holds no data or tool logic; tools come from the app. It's Node with no dependencies (no native binary), listens on 127.0.0.1 only, and needs the pairing code.
+- **The bridge only relays.** `apps/bridge` holds no data or tool logic; tools come from the app (it ships a copy of the tool list for before Falcon is open, kept in step by `npm run bridge:tools`). It's Node with no dependencies (no native binary), listens on 127.0.0.1 only, and needs the pairing code.
 - **Public repo.** No real client, firm or team names or data in code, tests or docs.
 
 ## Working with the user

@@ -14,7 +14,16 @@ const read = (p) => fs.readFileSync(path.join(root, p));
 
 const manifest = JSON.parse(read("manifest.json"));
 const pkg = JSON.parse(read("package.json"));
-const server = read("server/index.mjs");
+// Build Falcon's tool list into the released server, so it can offer every tool
+// before Falcon is open (some AI apps only ask for tools once, at start-up).
+const tools = JSON.parse(read("server/tools.snapshot.json")).tools;
+const source = read("server/index.mjs").toString();
+const marker = "const BUNDLED_TOOLS = null;";
+if (!source.includes(marker) || !Array.isArray(tools) || tools.length < 10) {
+  console.error("Can't build the tool list into the server (marker or tools.snapshot.json missing). Run `npm run bridge:tools` at the repo root.");
+  process.exit(1);
+}
+const server = Buffer.from(source.replace(marker, `const BUNDLED_TOOLS = ${JSON.stringify(tools)};`));
 const serverVersion = /const VERSION = "([^"]+)"/.exec(server.toString())?.[1];
 if (manifest.version !== pkg.version || serverVersion !== pkg.version) {
   console.error(`Version mismatch: manifest ${manifest.version}, package ${pkg.version}, server ${serverVersion}`);

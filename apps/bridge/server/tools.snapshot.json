@@ -1,0 +1,1250 @@
+{
+ "tools": [
+  {
+   "name": "get_today",
+   "description": "Today's briefing: overdue and due-today items, IRL items and follow-ups to chase today (grouped by person), work papers waiting for my review, and open review points on my own work papers.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {}
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "search",
+   "description": "Find records by text across engagements, tasks, work papers, review points, RFI items, work plan steps, follow-ups and people. Returns ids for use with other tools.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "Text to look for; empty string lists everything in the chosen tables"
+     },
+     "tables": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "enum": [
+        "people",
+        "engagements",
+        "workstreams",
+        "tasks",
+        "workpapers",
+        "reviewPoints",
+        "infoRequests",
+        "followUps",
+        "alerts",
+        "timeEntries",
+        "days",
+        "achievements",
+        "trialBalances",
+        "programItems",
+        "planItems"
+       ]
+      }
+     },
+     "includeDone": {
+      "description": "Include done/cleared/received/closed items",
+      "type": "boolean"
+     },
+     "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+     }
+    },
+    "required": [
+     "query"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "create_engagement",
+   "description": "Create an engagement/assignment (e.g. a deal code name like 'Project Falcon', or a client name) with its type, status, lead and team. For a whole team allocation sheet, call this once per assignment (or update_engagement if it already exists).",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "type": {
+      "description": "e.g. Due Diligence, Transaction Support, Stat Audit, Internal Audit, ITR",
+      "type": "string"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "active",
+       "on_hold",
+       "closed"
+      ]
+     },
+     "client": {
+      "description": "Target or client company",
+      "type": "string"
+     },
+     "side": {
+      "type": "string",
+      "enum": [
+       "buy",
+       "sell",
+       "other"
+      ]
+     },
+     "lead": {
+      "description": "Who leads it; omit or 'me' when the user leads it",
+      "type": "string"
+     },
+     "team": {
+      "description": "Team member names; new names become team contacts",
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "workstreams": {
+      "description": "e.g. QoE, NWC, Net debt, Tax",
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "draftReport": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "Date as YYYY-MM-DD"
+     },
+     "finalReport": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "Date as YYYY-MM-DD"
+     },
+     "timesheetCode": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "name"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "update_engagement",
+   "description": "Change an engagement's status, type, lead, team, dates or details. `team` replaces the whole team; use addToTeam/removeFromTeam for single changes.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "engagement": {
+      "type": "string",
+      "description": "Engagement id or name"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "active",
+       "on_hold",
+       "closed"
+      ]
+     },
+     "type": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     },
+     "client": {
+      "type": "string"
+     },
+     "lead": {
+      "description": "New lead's name, or 'me'",
+      "type": "string"
+     },
+     "team": {
+      "description": "Full team (names), replacing the current one",
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "addToTeam": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "removeFromTeam": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "draftReport": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "Date as YYYY-MM-DD"
+     },
+     "finalReport": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "Date as YYYY-MM-DD"
+     },
+     "notes": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "engagement"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "add_person",
+   "description": "Add a contact: a client contact, manager, partner or team member.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "role": {
+      "type": "string",
+      "enum": [
+       "client",
+       "manager",
+       "partner",
+       "team",
+       "other"
+      ]
+     },
+     "org": {
+      "type": "string"
+     },
+     "email": {
+      "type": "string"
+     },
+     "phone": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "name",
+     "role"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "create_task",
+   "description": "Create a to-do, call or meeting. When the user gives a time (\"call Rahul at 3pm\", \"review meeting 10:30-11:30\"), set due AND time (and durationMinutes if an end time or length is given): it is then added to their Google Calendar at that time with a reminder. Assign it to a team member to track work you've pushed to them.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "title": {
+      "type": "string"
+     },
+     "engagement": {
+      "description": "Engagement id or name",
+      "type": "string"
+     },
+     "due": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "Date as YYYY-MM-DD"
+     },
+     "time": {
+      "description": "Start time, 24h HH:mm, e.g. 15:00. Requires due.",
+      "type": "string",
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+     },
+     "durationMinutes": {
+      "description": "Length in minutes; default 30",
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 1440
+     },
+     "priority": {
+      "type": "string",
+      "enum": [
+       "low",
+       "normal",
+       "high"
+      ]
+     },
+     "assignee": {
+      "description": "Team member name or id; omit for me",
+      "type": "string"
+     },
+     "notes": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "title"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "update_task",
+   "description": "Edit a task (title, date, time, length, priority) or mark it done. Set time to \"\" to make it untimed again.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "title": {
+      "type": "string"
+     },
+     "due": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "Date as YYYY-MM-DD"
+     },
+     "time": {
+      "description": "Start time HH:mm, or \"\" to remove",
+      "anyOf": [
+       {
+        "type": "string",
+        "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+        "description": "Time as 24h HH:mm"
+       },
+       {
+        "type": "string",
+        "const": ""
+       }
+      ]
+     },
+     "durationMinutes": {
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 1440
+     },
+     "priority": {
+      "type": "string",
+      "enum": [
+       "low",
+       "normal",
+       "high"
+      ]
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "todo",
+       "in_progress",
+       "done"
+      ]
+     },
+     "notes": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "create_workpaper",
+   "description": "Track a work paper. myRole 'preparer' = I execute it; 'reviewer' = I review someone else's.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "engagement": {
+      "type": "string"
+     },
+     "ref": {
+      "type": "string",
+      "description": "WP reference, e.g. B.2"
+     },
+     "title": {
+      "type": "string"
+     },
+     "myRole": {
+      "type": "string",
+      "enum": [
+       "preparer",
+       "reviewer"
+      ]
+     },
+     "workstream": {
+      "description": "Workstream name, e.g. NWC",
+      "type": "string"
+     },
+     "preparer": {
+      "description": "Preparer's name when I'm the reviewer",
+      "type": "string"
+     },
+     "reviewer": {
+      "description": "Reviewer's name when I'm the preparer",
+      "type": "string"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "not_started",
+       "in_progress",
+       "prepared",
+       "in_review",
+       "points_raised",
+       "cleared",
+       "final"
+      ]
+     },
+     "due": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "Date as YYYY-MM-DD"
+     }
+    },
+    "required": [
+     "engagement",
+     "ref",
+     "title",
+     "myRole"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "update_workpaper_status",
+   "description": "Move a work paper through: not_started → in_progress → prepared → in_review → points_raised → cleared → final.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "workpaper": {
+      "type": "string",
+      "description": "WP id or ref"
+     },
+     "engagement": {
+      "description": "Needed if the ref exists on several engagements",
+      "type": "string"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "not_started",
+       "in_progress",
+       "prepared",
+       "in_review",
+       "points_raised",
+       "cleared",
+       "final"
+      ]
+     }
+    },
+    "required": [
+     "workpaper",
+     "status"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "add_review_points",
+   "description": "Add one or more review points (review notes) to a work paper. Sets the WP to points_raised.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "workpaper": {
+      "type": "string",
+      "description": "WP id or ref"
+     },
+     "engagement": {
+      "type": "string"
+     },
+     "points": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "raisedBy": {
+      "description": "Who raised them; omit for me",
+      "type": "string"
+     },
+     "assignedTo": {
+      "description": "Who must address them; omit for me",
+      "type": "string"
+     }
+    },
+    "required": [
+     "workpaper",
+     "points"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "update_review_point",
+   "description": "Mark a review point addressed or cleared (or reopen it).",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "open",
+       "addressed",
+       "cleared"
+      ]
+     }
+    },
+    "required": [
+     "id",
+     "status"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "add_irl_items",
+   "description": "Add items to an engagement's information request list (IRL), e.g. from a pasted email or screenshot. Next chase dates are set automatically.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "engagement": {
+      "type": "string"
+     },
+     "requestedFrom": {
+      "description": "Client contact's name; created if new",
+      "type": "string"
+     },
+     "requestedOn": {
+      "description": "Defaults to today",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+     },
+     "items": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "number": {
+         "type": "string"
+        },
+        "description": {
+         "type": "string"
+        },
+        "due": {
+         "type": "string",
+         "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+         "description": "Date as YYYY-MM-DD"
+        }
+       },
+       "required": [
+        "description"
+       ]
+      }
+     }
+    },
+    "required": [
+     "engagement",
+     "items"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "update_irl_item",
+   "description": "Update an IRL item: mark received/partial/na, change due date or add notes.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "pending",
+       "partial",
+       "received",
+       "na"
+      ]
+     },
+     "due": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "Date as YYYY-MM-DD"
+     },
+     "notes": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "log_chase",
+   "description": "Record that I chased an IRL item or nudged someone on a follow-up today. Moves the next chase date forward.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "ids": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "description": "IRL item or follow-up ids"
+     }
+    },
+    "required": [
+     "ids"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "create_followup",
+   "description": "Track something I'm waiting on from a client, manager or team member.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "about": {
+      "type": "string",
+      "description": "What I'm waiting for"
+     },
+     "person": {
+      "type": "string"
+     },
+     "type": {
+      "description": "Defaults from the person's role",
+      "type": "string",
+      "enum": [
+       "client",
+       "manager",
+       "team",
+       "other"
+      ]
+     },
+     "engagement": {
+      "type": "string"
+     },
+     "due": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "Date as YYYY-MM-DD"
+     }
+    },
+    "required": [
+     "about"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "close_followup",
+   "description": "Mark a follow-up done (I got what I was waiting for).",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "create_alert",
+   "description": "Set a reminder that pops up at a given local date and time.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "title": {
+      "type": "string"
+     },
+     "at": {
+      "type": "string",
+      "description": "Local date-time, e.g. 2026-10-20T16:00"
+     },
+     "itemId": {
+      "description": "Record the reminder is about",
+      "type": "string"
+     }
+    },
+    "required": [
+     "title",
+     "at"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "log_time",
+   "description": "Log time worked, against an engagement and optionally a task. Use for timesheet hours.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "minutes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1440,
+      "description": "Duration in minutes (e.g. 90 for 1.5h)"
+     },
+     "date": {
+      "description": "Defaults to today",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+     },
+     "engagement": {
+      "description": "Engagement id or name; omit for admin/other time",
+      "type": "string"
+     },
+     "taskId": {
+      "type": "string"
+     },
+     "note": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "minutes"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "weekly_report",
+   "description": "Summary for a week: items finished, chases, focus sessions, hours by engagement, a timesheet grid, longest-waiting items, overdue count.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "weekOf": {
+      "description": "Any date in the week; defaults to this week",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "get_stats",
+   "description": "Gamification stats: points, level, today's ring progress, streaks and badges earned.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {}
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "get_work_programme",
+   "description": "An engagement's TB-driven work programme: materiality, area balances (current and prior), trend flags, and procedures with status, reviewer outcome and notes. Optionally one area.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "engagement": {
+      "type": "string"
+     },
+     "area": {
+      "type": "string",
+      "enum": [
+       "cash_bank",
+       "receivables",
+       "inventory",
+       "loans_advances",
+       "other_current_assets",
+       "investments",
+       "ppe",
+       "intangibles_cwip",
+       "payables",
+       "borrowings",
+       "statutory_dues",
+       "provisions",
+       "other_liabilities",
+       "equity_reserves",
+       "revenue",
+       "other_income",
+       "cogs_purchases",
+       "employee_costs",
+       "other_expenses",
+       "depreciation",
+       "finance_costs",
+       "tax",
+       "general",
+       "unmapped"
+      ]
+     }
+    },
+    "required": [
+     "engagement"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "add_program_items",
+   "description": "Add procedures (with why) to an engagement's work programme for an area, e.g. extra checks after the reviewer flagged something. Optionally under a flagged step (parentId).",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "engagement": {
+      "type": "string"
+     },
+     "area": {
+      "type": "string",
+      "enum": [
+       "cash_bank",
+       "receivables",
+       "inventory",
+       "loans_advances",
+       "other_current_assets",
+       "investments",
+       "ppe",
+       "intangibles_cwip",
+       "payables",
+       "borrowings",
+       "statutory_dues",
+       "provisions",
+       "other_liabilities",
+       "equity_reserves",
+       "revenue",
+       "other_income",
+       "cogs_purchases",
+       "employee_costs",
+       "other_expenses",
+       "depreciation",
+       "finance_costs",
+       "tax",
+       "general",
+       "unmapped"
+      ]
+     },
+     "items": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "text": {
+         "type": "string"
+        },
+        "why": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "text"
+       ]
+      }
+     },
+     "parentId": {
+      "description": "Id of the programme step these follow up on",
+      "type": "string"
+     }
+    },
+    "required": [
+     "engagement",
+     "area",
+     "items"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "update_program_item",
+   "description": "Update a work-programme step: preparer status, reviewer outcome (ok / flagged / na) with a note, notes, or assignee.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "todo",
+       "in_progress",
+       "done",
+       "na"
+      ]
+     },
+     "review": {
+      "type": "string",
+      "enum": [
+       "none",
+       "ok",
+       "flagged",
+       "na"
+      ]
+     },
+     "reviewNote": {
+      "type": "string"
+     },
+     "notes": {
+      "type": "string"
+     },
+     "assignee": {
+      "description": "Team member name, or 'me'",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "get_workload",
+   "description": "Everything one person has to complete (or 'me'), optionally on one engagement: work plan steps where they are the person responsible, steps waiting for their review, work papers they prepare or review, tasks, review points assigned to them and work-programme procedures. Use for 'how many items / work papers / steps does X have', 'what is pending with X'.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "person": {
+      "type": "string",
+      "description": "Name, first name or initials as used in the work plan, or 'me'"
+     },
+     "engagement": {
+      "type": "string"
+     },
+     "includeDone": {
+      "description": "Also list finished items",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "person"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "get_work_plan",
+   "description": "An engagement's imported work plan / audit programme (the Work plan tab): progress, steps per person, and the steps with number, area, procedure, person responsible, execution status (open / wip / review = review pending / closed), review status, reviewer, risk and hours. Filter by person, status or area.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "engagement": {
+      "type": "string"
+     },
+     "person": {
+      "description": "Only steps this person is responsible for or reviews",
+      "type": "string"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "open",
+       "wip",
+       "review",
+       "closed"
+      ]
+     },
+     "area": {
+      "description": "Area or phase text, e.g. 'Payroll' or 'Balance Sheet'",
+      "type": "string"
+     }
+    },
+    "required": [
+     "engagement"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "get_readiness",
+   "description": "Which open work plan steps can be executed now with the inputs received on the RFI, which are blocked (and by which missing RFI items or inputs not on the RFI), which only have suggested links the user hasn't confirmed yet, and which aren't linked to any input. Only confirmed links count as ready or blocked. Optionally for one person. Use for 'what can we do now', 'what's blocked and why', 'what is holding up Asha'.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "engagement": {
+      "type": "string"
+     },
+     "person": {
+      "description": "Only steps this person is responsible for",
+      "type": "string"
+     },
+     "includeRfi": {
+      "description": "Also return the engagement's RFI items (number, status, short description), e.g. to link steps with set_step_inputs",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "engagement"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "set_step_inputs",
+   "description": "Suggest which client inputs work plan steps need, for the Readiness page: RFI item numbers, inputs that aren't on the RFI (e.g. 'GSTR-2B for the period'), or that a step needs no client input. Several steps per call. These are suggestions: they show under To confirm and don't count until the user confirms them in Falcon (only the user can confirm). Steps the user already confirmed or set by hand are skipped. Get step ids and RFI numbers from get_readiness with includeRfi.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "engagement": {
+      "type": "string"
+     },
+     "steps": {
+      "minItems": 1,
+      "maxItems": 100,
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "step": {
+         "type": "string",
+         "description": "Step id, or its number as shown on the plan (e.g. '7.3')"
+        },
+        "rfi": {
+         "description": "RFI item numbers the step needs",
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "notOnRfi": {
+         "description": "Inputs the step needs that aren't on the RFI",
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "none": {
+         "description": "True when the step needs no client input",
+         "type": "boolean"
+        }
+       },
+       "required": [
+        "step"
+       ]
+      }
+     },
+     "mode": {
+      "description": "replace (default) sets the step's inputs; add keeps what it has and adds these",
+      "type": "string",
+      "enum": [
+       "replace",
+       "add"
+      ]
+     }
+    },
+    "required": [
+     "engagement",
+     "steps"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "add_point_challenges",
+   "description": "Save counter-questions on a review point ('have you also checked…?'), each with a one-line why. They show on the point for the reviewer to add or dismiss. Replaces earlier AI questions that are still open.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "pointId": {
+      "type": "string"
+     },
+     "questions": {
+      "minItems": 1,
+      "maxItems": 8,
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "question": {
+         "type": "string",
+         "minLength": 3
+        },
+        "why": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "question"
+       ]
+      }
+     }
+    },
+    "required": [
+     "pointId",
+     "questions"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "update_plan_step",
+   "description": "Update a work plan step (ids from get_work_plan or get_workload): execution status, review status, notes, actual hours or person responsible.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "open",
+       "wip",
+       "review",
+       "closed"
+      ]
+     },
+     "reviewStatus": {
+      "type": "string",
+      "enum": [
+       "open",
+       "wip",
+       "closed"
+      ]
+     },
+     "notes": {
+      "type": "string"
+     },
+     "actualHours": {
+      "type": "number",
+      "minimum": 0
+     },
+     "assignee": {
+      "description": "Name as it should show on the plan",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  },
+  {
+   "name": "delete_item",
+   "description": "Delete a record. First call without confirmed to get a preview, show it to the user, and only call again with confirmed: true after they agree.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "confirmed": {
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true
+   }
+  },
+  {
+   "name": "undo_last",
+   "description": "Undo the most recent change made through this chat.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {}
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false
+   }
+  }
+ ]
+}

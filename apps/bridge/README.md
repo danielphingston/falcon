@@ -68,9 +68,13 @@ npm run pack      # dist/falcon-bridge.mcpb, dist/falcon-bridge.mjs, dist/SHA256
 
 No dependencies: Node's standard library only.
 
+## Tool list before Falcon is open
+
+Some AI apps ask for the tool list only once, when they start. So the bridge always offers the full list: Falcon's live list when it's connected, otherwise the last list Falcon sent (`~/.falcon-bridge/tools.json`), otherwise the list the release was built with (`server/tools.snapshot.json`, built into the released files). A core test fails when that copy is out of date with the app's tools; refresh it with `npm run bridge:tools` at the repo root. When the AI app was started before any of this was available, `falcon_status` tells it to start a new chat.
+
 ## Release
 
-Bump the version in `package.json`, `manifest.json` and `server/index.mjs` (the pack step checks they match), merge, then push a tag:
+Bump the version in `package.json`, `manifest.json` and `server/index.mjs` (the pack step checks they match), make sure `npm run bridge:tools` leaves no changes, merge, then push a tag:
 
 ```sh
 git tag bridge-v0.1.0 && git push origin bridge-v0.1.0

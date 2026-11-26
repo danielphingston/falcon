@@ -1,6 +1,6 @@
 {
   "name": "@falcon/bridge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "license": "MIT",
   "description": "Local MCP bridge: lets Claude and other MCP clients use Falcon's tools through the open Falcon tab.",
