@@ -26,9 +26,10 @@ The home-screen app keeps its own data. To sync it with your other devices, open
 **How to**
 
 1. Read the counters at the top: overdue, due today, to chase, to review, done today.
-2. Work down the sections: **Overdue**, **Due today**, **Chase today**, **Waiting for my review**, **Review points on my WPs**.
-3. Tick a checkbox to mark a task done.
-4. Tap **Chased** to log a chase. The next chase date is set for you. If a group has several items, tap **Chased all**.
+2. Work down the sections, in this order: **Overdue** (tasks, review points you owe and follow-ups past their date), **Due today**, **Waiting for my review**, **Chase today**, **Assign a contact**, **Unlocked since yesterday** (work plan steps that became ready or can start because RFI items came in), **Review points I owe**, then **Past meetings**, reminders and the calendar.
+3. **Carried tasks.** An open task from an earlier day stays on Today, marked **Carried**. Tap **Move to today** to give it today's date (its calendar event moves too; no second event is made). Meetings and calls from an earlier day aren't carried: they show under **Past meetings** for you to tick off or re-date. Two reminders with the same text show once.
+4. Tick a checkbox to mark a task done.
+5. Tap **Chased** to log a chase. The next chase date is set for you. If a group has several items, tap **Chased all**.
 
 ## Quick add
 
@@ -102,7 +103,8 @@ The file is read on your device only. Importing again later **updates** existing
 3. Tap **Copy pending table** and paste it into an email.
 4. Tap **Email** with the contact's first name to open a chase email with their pending items.
 5. Tap **Chased** on an item to log a chase. Tick **Mark received** when it arrives.
-6. Narrow the list with the filters under **Pending / All**. Tap one or more criticality chips (**High**, **Medium**, **Low**, from the RFI's criticality column) and pick an area from the **All areas** list. For example, Pending + High + Revenue shows only the open high-criticality revenue requests. Tap **Clear filters** to see everything again.
+6. **When to chase.** The next chase date follows the RFI's **Criticality** column: High every 3, Medium every 5, Low every 7 working days, Monday to Friday, counted from the request date or the last chase. A blank or unknown criticality counts as Medium. Items with nobody to chase (no contact and no person responsible on the RFI) aren't counted as chases; Today lists them under **Assign a contact**. You can still set **Next chase** by hand on any item. To bring existing items in line, tap **Settings → Working week → Reset chase dates**: the new dates go to the **Inbox** as one change to review.
+7. Narrow the list with the filters under **Pending / All**. Tap one or more criticality chips (**High**, **Medium**, **Low**, from the RFI's criticality column) and pick an area from the **All areas** list. For example, Pending + High + Revenue shows only the open high-criticality revenue requests. Tap **Clear filters** to see everything again.
 
 ## Work plan (the engagement's audit programme)
 
@@ -152,7 +154,8 @@ Other sheets in the file (time summary, risks and instructions…) are kept unde
 1. Open **Review** (from **More** on a phone). Choose **I review** or **I prepare**.
 2. Work papers are grouped by status, most urgent first. Tap **Show final** to include finished ones.
 3. Open a work paper and add review points, one per line. Pasting a list works.
-4. Tick **Clear review point** when a point is resolved.
+4. Each open point shows **Owner**, **Due** and **Step**. The owner is the work paper's preparer unless you pick someone else (or **Me**); the point then counts in that person's workload and, if it's you, on Today. Set a due date to have it show as overdue, and link it to the work plan step it's about. Points marked 🔒 are your own notes and never count for anyone. Reassigning a point on a Final work paper sends the paper back to Points raised.
+5. Tick **Clear review point** when a point is resolved.
 
 **Your firm's templates first**
 

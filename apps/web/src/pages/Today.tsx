@@ -3,7 +3,21 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { motion, type Variants } from "motion/react";
 import { SyncBadge } from "../components/SyncBadge";
 import { readCalendarToday } from "../lib/sync";
-import { BADGES, computeToday, formatMinutes, isoWeekKey, logChase, shiftWeek, weekStart, weeklyRecap, type DueItem } from "@falcon/core";
+import {
+  BADGES,
+  computeToday,
+  dayBefore,
+  formatMinutes,
+  isCarried,
+  isoWeekKey,
+  logChase,
+  readinessLabels,
+  shiftWeek,
+  weekStart,
+  weeklyRecap,
+  type Alert,
+  type DueItem,
+} from "@falcon/core";
 import { DailyRing, RingLegend } from "../components/Ring";
 import { TLink } from "../components/TLink";
 import { saveSettings } from "../db";
@@ -21,23 +35,41 @@ function greeting() {
   return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
 }
 
+/** One reminder per text (and task), the earliest kept. */
+function mergeAlerts(list: Alert[]): Alert[] {
+  const seen = new Set<string>();
+  return [...list]
+    .sort((a, b) => a.fireAt.localeCompare(b.fireAt))
+    .filter((a) => {
+      const key = `${a.title.trim().toLowerCase()}|${(a as { taskId?: string }).taskId ?? ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
 export function TodayPage() {
   const snap = useSnapshot();
   const today = useToday();
   const settings = useSettings();
   const l = useLookups();
-  const alerts = (useTable("alerts") ?? []).filter((a) => !a.fired && a.fireAt.slice(0, 10) <= today).sort((a, b) => a.fireAt.localeCompare(b.fireAt));
+  // Two reminders with the same text count once (5.2: duplicate alerts merged).
+  const alerts = mergeAlerts((useTable("alerts") ?? []).filter((a) => !a.deleted && !a.fired && a.fireAt.slice(0, 10) <= today));
   if (!snap) return null;
 
-  const v = computeToday(snap, today);
+  const v = computeToday(snap, today, dayBefore(today));
+  const chaseCount = v.chase.reduce((s, g) => s + g.items.length, 0);
   const openPoints = (wpId: string) => snap.reviewPoints.filter((p) => p.workpaperId === wpId && p.status !== "cleared").length;
-  const nothing = !v.overdue.length && !v.dueToday.length && !v.chase.length && !v.toReview.length && !v.pointsToClear.length;
+  const nothing =
+    !v.overdue.length && !v.dueToday.length && !v.chase.length && !v.toReview.length && !v.pointsToClear.length && !v.assignContact.length && !v.unlocked.length && !v.past.length;
   const firstRun = snap.engagements.length === 0 && snap.tasks.length === 0;
 
   const row = (d: DueItem) => {
     switch (d.kind) {
       case "task":
-        return <TaskRow key={d.record.id} task={d.record} l={l} />;
+        return <TaskRow key={d.record.id} task={d.record} l={l} tag={isCarried(d.record, today) ? "carried" : undefined} />;
+      case "point":
+        return <ReviewPointRow key={d.record.id} p={d.record} l={l} />;
       case "workpaper":
         return <WorkpaperRow key={d.record.id} wp={d.record} l={l} openPoints={openPoints(d.record.id)} />;
       case "irl":
@@ -66,45 +98,15 @@ export function TodayPage() {
         <div className="mt-3 flex flex-wrap gap-2 text-sm">
           <Stat n={v.overdue.length} label="overdue" tone="text-rose-600" />
           <Stat n={v.dueToday.length} label="due today" tone="text-amber-600" />
-          <Stat n={v.chase.reduce((s, g) => s + g.items.length, 0)} label="to chase" tone="text-brand-600" />
+          <Stat n={chaseCount} label="to chase" tone="text-brand-600" />
           <Stat n={v.toReview.length} label="to review" tone="text-sky-600" />
           <Stat n={v.doneToday.length} label="done today" tone="text-emerald-600" />
         </div>
       </motion.header>
 
-      {settings.gamification && !firstRun && (
-        <motion.div variants={rise}>
-          <GameCard />
-        </motion.div>
-      )}
-
-      {settings.gamification && !firstRun && (
-        <motion.div variants={rise}>
-          <RecapCard />
-        </motion.div>
-      )}
-
       <motion.div variants={rise}>
         <QuickAdd autoFocus={false} />
       </motion.div>
-
-      {alerts.length > 0 && (
-        <motion.div variants={rise}>
-          <Section title="Reminders" icon="bell" count={alerts.length}>
-            <AnimatedList>
-              {alerts.map((a) => (
-                <div key={a.id} className="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-[var(--surface-2)]" onClick={() => openEditor({ table: "alerts", id: a.id })}>
-                  <Icon name="bell" size={18} className="text-brand-600" />
-                  <p className="flex-1 text-[15px]">{a.title}</p>
-                  <span className="text-xs muted">{format(new Date(a.fireAt), "HH:mm")}</span>
-                </div>
-              ))}
-            </AnimatedList>
-          </Section>
-        </motion.div>
-      )}
-
-      <CalendarToday rise={rise} />
 
       {firstRun ? (
         <motion.div variants={rise}>
@@ -125,6 +127,7 @@ export function TodayPage() {
         </motion.div>
       ) : null}
 
+      {/* Build brief 5.1: my overdue items first, then due today, my reviews, chases, and what got unlocked. */}
       {v.overdue.length > 0 && (
         <motion.div variants={rise}>
           <Section title="Overdue" count={v.overdue.length} icon="clock">
@@ -141,15 +144,27 @@ export function TodayPage() {
         </motion.div>
       )}
 
+      {v.toReview.length > 0 && (
+        <motion.div variants={rise}>
+          <Section title="Waiting for my review" count={v.toReview.length} icon="review">
+            <AnimatedList>
+              {v.toReview.map((w) => (
+                <WorkpaperRow key={w.id} wp={w} l={l} openPoints={openPoints(w.id)} />
+              ))}
+            </AnimatedList>
+          </Section>
+        </motion.div>
+      )}
+
       {v.chase.length > 0 && (
         <motion.div variants={rise}>
-          <Section title="Chase today" count={v.chase.reduce((s, g) => s + g.items.length, 0)} icon="send">
+          <Section title="Chase today" count={chaseCount} icon="send">
             <div className="space-y-3">
               {v.chase.map((g) => (
-                <div key={g.person?.id ?? "none"} className="space-y-1.5">
+                <div key={g.person?.id ?? g.name ?? "none"} className="space-y-1.5">
                   <div className="flex items-center justify-between px-1">
                     <p className="text-sm font-semibold">
-                      {g.person?.name ?? "No contact set"} <span className="font-normal muted">· {g.items.length}</span>
+                      {g.person?.name ?? g.name ?? "No contact set"} <span className="font-normal muted">· {g.items.length}</span>
                     </p>
                     {g.items.length > 1 && (
                       <button
@@ -178,21 +193,42 @@ export function TodayPage() {
         </motion.div>
       )}
 
-      {v.toReview.length > 0 && (
+      {v.assignContact.length > 0 && (
         <motion.div variants={rise}>
-          <Section title="Waiting for my review" count={v.toReview.length} icon="review">
+          <Section title="Assign a contact" count={v.assignContact.length} icon="send">
+            <p className="px-1 pb-1 text-xs muted">Due a chase but nobody to chase: set who has them (Requested from, or the client's person responsible). They aren't counted as chases.</p>
             <AnimatedList>
-              {v.toReview.map((w) => (
-                <WorkpaperRow key={w.id} wp={w} l={l} openPoints={openPoints(w.id)} />
+              {v.assignContact.slice(0, 5).map((r) => (
+                <IrlRow key={r.id} item={r} l={l} today={today} />
               ))}
             </AnimatedList>
+            {v.assignContact.length > 5 && <p className="px-1 pt-1 text-xs muted">and {v.assignContact.length - 5} more on the engagements' RFI tabs</p>}
+          </Section>
+        </motion.div>
+      )}
+
+      {v.unlocked.length > 0 && (
+        <motion.div variants={rise}>
+          <Section title="Unlocked since yesterday" count={v.unlocked.length} icon="sparkles">
+            <div className="card divide-y divide-[var(--border)]">
+              {v.unlocked.map((u) => (
+                <button key={u.step.id} className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-[var(--surface-2)]" onClick={() => openEditor({ table: "planItems", id: u.step.id })}>
+                  <span className="font-mono text-xs muted">{u.step.number}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm">{u.step.text.split(/\r?\n/)[0]}</span>
+                  <span className="shrink-0 text-xs muted">
+                    {l.engagements.get(u.step.engagementId)?.name}
+                    {u.step.assignee ? ` · ${u.step.assignee}` : ""} · <span className="font-semibold text-emerald-600">{readinessLabels[u.to]}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
           </Section>
         </motion.div>
       )}
 
       {v.pointsToClear.length > 0 && (
         <motion.div variants={rise}>
-          <Section title="Review points on my WPs" count={v.pointsToClear.length} icon="edit">
+          <Section title="Review points I owe" count={v.pointsToClear.length} icon="edit">
             <AnimatedList>
               {v.pointsToClear.map((p) => (
                 <ReviewPointRow key={p.id} p={p} l={l} />
@@ -201,6 +237,37 @@ export function TodayPage() {
           </Section>
         </motion.div>
       )}
+
+      {v.past.length > 0 && (
+        <motion.div variants={rise}>
+          <Section title="Past meetings" count={v.past.length} icon="calendar">
+            <p className="px-1 pb-1 text-xs muted">Meetings and calls from earlier days aren't carried forward: tick them off, or open one to set a new date.</p>
+            <AnimatedList>
+              {v.past.map((t) => (
+                <TaskRow key={t.id} task={t} l={l} tag="past" />
+              ))}
+            </AnimatedList>
+          </Section>
+        </motion.div>
+      )}
+
+      {alerts.length > 0 && (
+        <motion.div variants={rise}>
+          <Section title="Reminders" icon="bell" count={alerts.length}>
+            <AnimatedList>
+              {alerts.map((a) => (
+                <div key={a.id} className="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-[var(--surface-2)]" onClick={() => openEditor({ table: "alerts", id: a.id })}>
+                  <Icon name="bell" size={18} className="text-brand-600" />
+                  <p className="flex-1 text-[15px]">{a.title}</p>
+                  <span className="text-xs muted">{format(new Date(a.fireAt), "HH:mm")}</span>
+                </div>
+              ))}
+            </AnimatedList>
+          </Section>
+        </motion.div>
+      )}
+
+      <CalendarToday rise={rise} />
 
       {v.doneToday.length > 0 && (
         <motion.div variants={rise}>
@@ -211,6 +278,18 @@ export function TodayPage() {
               ))}
             </AnimatedList>
           </Section>
+        </motion.div>
+      )}
+
+      {settings.gamification && !firstRun && (
+        <motion.div variants={rise}>
+          <GameCard />
+        </motion.div>
+      )}
+
+      {settings.gamification && !firstRun && (
+        <motion.div variants={rise}>
+          <RecapCard />
         </motion.div>
       )}
     </motion.div>
