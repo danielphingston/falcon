@@ -148,7 +148,12 @@ export const reviewPointFields = z.object({
   engagementId: z.string(),
   text: z.string().trim().min(1),
   raisedById: z.string().optional(),
+  /** Who must address it: a person id or "me". Unset = the work paper's preparer (read time). */
   assignedToId: z.string().optional(),
+  /** When it should be addressed by. */
+  due: isoDate.optional(),
+  /** Work plan step it relates to. */
+  planItemId: z.string().optional(),
   status: z.enum(reviewPointStatuses).default("open"),
   clearedAt: isoDateTime.optional(),
   /** Raised from a firm checklist: never sent to the AI. */

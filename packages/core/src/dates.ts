@@ -11,6 +11,9 @@ export function isWorkingDay(iso: string, s: Pick<Settings, "workingDays" | "hol
 }
 
 /** Moves forward `n` working days (n >= 0). n = 0 rolls a non-working day forward. */
+/** The calendar day before `iso`. */
+export const dayBefore = (iso: string): string => toISODate(addDays(parseISO(iso), -1));
+
 export function addWorkingDays(
   iso: string,
   n: number,

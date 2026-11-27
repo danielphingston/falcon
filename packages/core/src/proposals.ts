@@ -88,7 +88,9 @@ const RULES: Record<Settings["autoApply"][number], (c: Captured) => boolean> = {
   chaseLogs: (c) =>
     (c.table === "infoRequests" || c.table === "followUps") &&
     c.action === "update" &&
-    changedFields(c.before, c.after).every((f) => ["chaseLog", "nextChaseOn", "nudgeLog", "nextNudgeOn"].includes(f)),
+    changedFields(c.before, c.after).every((f) => ["chaseLog", "nextChaseOn", "nudgeLog", "nextNudgeOn"].includes(f)) &&
+    // A chase was logged (resetting chase dates in bulk is a proposal).
+    changedFields(c.before, c.after).some((f) => f === "chaseLog" || f === "nudgeLog"),
 };
 
 /** True when every change is of a type the user lets apply straight away. */

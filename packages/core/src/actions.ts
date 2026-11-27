@@ -1,4 +1,5 @@
 import { addWorkingDays, todayISO } from "./dates";
+import { nextChaseDate } from "./chase";
 import {
   entitySchemas,
   fieldSchemas,
@@ -225,10 +226,9 @@ export async function logChase(ctx: Ctx, table: "infoRequests" | "followUps", id
   if (table === "infoRequests") {
     const item = await ctx.store.get("infoRequests", id);
     if (!item || item.deleted) throw new NotFoundError(`No IRL item ${id}`);
-    const days = await chaseInterval(ctx, item.requestedFromId, "client");
     return update(ctx, "infoRequests", id, {
       chaseLog: [...item.chaseLog, today],
-      nextChaseOn: addWorkingDays(today, days, settings),
+      nextChaseOn: nextChaseDate(item, settings, today),
     });
   }
   const item = await ctx.store.get("followUps", id);
@@ -244,10 +244,9 @@ export async function setTaskDone(ctx: Ctx, id: string, done: boolean) {
   return update(ctx, "tasks", id, { status: done ? "done" : "todo" });
 }
 
-/** Creates an IRL item, filling in the first chase date. */
+/** Creates an IRL item, filling in the first chase date from its criticality (4.2). */
 export async function createInfoRequest(ctx: Ctx, input: InputMap["infoRequests"]) {
-  const nextChaseOn =
-    input.nextChaseOn ?? (await firstChaseDate(ctx, input.requestedOn, input.requestedFromId, "client"));
+  const nextChaseOn = input.nextChaseOn ?? nextChaseDate({ ...input, chaseLog: [] }, await ctx.store.getSettings());
   return create(ctx, "infoRequests", { ...input, nextChaseOn });
 }
 

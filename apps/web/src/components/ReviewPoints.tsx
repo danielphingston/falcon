@@ -11,6 +11,63 @@ import { Checkbox, Pill, statusTone } from "./ui";
 type Challenge = NonNullable<ReviewPoint["challenges"]>[number];
 
 /**
+ * Who owes the point, by when, and which work plan step it's about (build
+ * brief 3.3). Unassigned points belong to the work paper's preparer.
+ */
+function PointOwner({ p, wp }: { p: ReviewPoint; wp: WorkPaper }) {
+  const snap = useSnapshot();
+  if (!snap) return null;
+  const people = snap.people.filter((x) => !x.deleted && x.role !== "client").sort((a, b) => a.name.localeCompare(b.name));
+  const steps = snap.planItems.filter((i) => !i.deleted && i.engagementId === wp.engagementId).sort((a, b) => a.order - b.order);
+  const preparer = wp.preparerId ? people.find((x) => x.id === wp.preparerId)?.name : wp.myRole === "preparer" ? "me" : undefined;
+  const set = (patch: Partial<ReviewPoint>, what: string) => act(what, (ctx) => update(ctx, "reviewPoints", p.id, patch as never));
+  const cls = "rounded-md border border-[var(--border)] bg-transparent px-1.5 py-0.5 text-xs";
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-2 pl-8 text-xs muted">
+      <label className="flex items-center gap-1">
+        Owner
+        <select
+          className={cls}
+          value={p.assignedToId ?? ""}
+          onChange={(e) => {
+            const v = e.target.value;
+            void set({ assignedToId: (v || null) as never }, "Point reassigned");
+            // Reassigning a point on a final work paper reopens it.
+            if (wp.status === "final") void act("Work paper back to points raised", (ctx) => update(ctx, "workpapers", wp.id, { status: "points_raised" }));
+          }}
+          aria-label="Who owes this point"
+        >
+          <option value="">Preparer{preparer ? ` (${preparer})` : ""}</option>
+          {(wp.preparerId || wp.myRole !== "preparer") && <option value="me">Me</option>}
+          {people.filter((x) => x.id !== wp.preparerId).map((x) => (
+            <option key={x.id} value={x.id}>
+              {x.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center gap-1">
+        Due
+        <input type="date" className={cls} value={p.due ?? ""} onChange={(e) => void set({ due: (e.target.value || null) as never }, e.target.value ? "Due date set" : "Due date cleared")} aria-label="Point due date" />
+      </label>
+      {steps.length > 0 && (
+        <label className="flex min-w-0 items-center gap-1">
+          Step
+          <select className={`${cls} max-w-[14rem]`} value={p.planItemId ?? ""} onChange={(e) => void set({ planItemId: (e.target.value || null) as never }, "Point linked")} aria-label="Work plan step">
+            <option value="">None</option>
+            {steps.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.number} {i.text.split(/\r?\n/)[0].slice(0, 50)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+    </div>
+  );
+}
+
+/**
  * Review points on a work paper. Each new point is challenged straight away:
  * related checks from the procedure library at once, then (when the AI is set
  * up) specific "have you also checked…?" questions from Gemini.
@@ -131,6 +188,7 @@ export function ReviewPointsPanel({ wp }: { wp: WorkPaper }) {
                   <Pill tone={statusTone[p.status]}>{labels.reviewPointStatus[p.status]}</Pill>
                 </button>
               </div>
+              {p.status !== "cleared" && !p.private && <PointOwner p={p} wp={wp} />}
               {p.status !== "cleared" && (
                 <Challenges
                   point={p}

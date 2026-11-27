@@ -53,6 +53,7 @@ const calls: Record<string, (ids: Ids) => unknown> = {
   add_irl_items: () => ({ engagement: "falcon", requestedFrom: "Priya", items: [{ number: "2.1", description: "FAR" }] }),
   update_irl_item: (i) => ({ id: i.rfi, status: "received" }),
   log_chase: (i) => ({ ids: [i.rfi, i.fu] }),
+  reset_chase_dates: () => ({ engagement: "falcon" }),
   create_followup: () => ({ about: "Send draft", person: "Ravi", engagement: "falcon" }),
   close_followup: (i) => ({ id: i.fu }),
   create_alert: (i) => ({ title: "Check TB", at: "2026-11-24T09:00:00Z", itemId: i.task }),

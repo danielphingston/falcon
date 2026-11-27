@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import {
+  todayISO,
   daysBetween,
   labels,
   logChase,
@@ -50,8 +51,14 @@ function Meta({ children }: { children: ReactNode }) {
 const engName = (l: Lookups, id?: string) => (id ? l.engagements.get(id)?.name : undefined);
 const personName = (l: Lookups, id?: string) => (id ? l.people.get(id)?.name : undefined);
 
-export function TaskRow({ task, l, hideEngagement }: { task: Task; l: Lookups; hideEngagement?: boolean }) {
+export function TaskRow({ task, l, hideEngagement, tag }: { task: Task; l: Lookups; hideEngagement?: boolean; tag?: "carried" | "past" }) {
   const done = task.status === "done";
+  // Carried tasks (5.2) can be moved to today: the date changes, the calendar event is updated, not duplicated.
+  const moveToday = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const today = todayISO();
+    void act("Moved to today", (ctx) => update(ctx, "tasks", task.id, { due: today, dueTime: null } as never));
+  };
   return (
     <ListItem id={task.id} onClick={() => openEditor({ table: "tasks", id: task.id })}>
       <Checkbox checked={done} onChange={(on) => act(on ? "Task done" : "Task reopened", (ctx) => setTaskDone(ctx, task.id, on))} />
@@ -67,6 +74,15 @@ export function TaskRow({ task, l, hideEngagement }: { task: Task; l: Lookups; h
         </Meta>
       </div>
       {task.status === "in_progress" && <Pill tone="blue">In progress</Pill>}
+      {tag === "past" && !done && <Pill tone="slate">Past</Pill>}
+      {tag === "carried" && !done && (
+        <>
+          <Pill tone="amber">Carried</Pill>
+          <button className="btn btn-soft btn-sm shrink-0" onClick={moveToday}>
+            Move to today
+          </button>
+        </>
+      )}
     </ListItem>
   );
 }
@@ -178,6 +194,8 @@ export function ReviewPointRow({ p, l }: { p: ReviewPoint; l: Lookups }) {
             </span>
           )}
           {p.raisedById && <span>by {personName(l, p.raisedById)}</span>}
+          {p.assignedToId && p.assignedToId !== "me" && <span>→ {personName(l, p.assignedToId)}</span>}
+          {p.due && <Due due={p.due} done={cleared} />}
         </Meta>
       </div>
       <Pill tone={statusTone[p.status]}>{labels.reviewPointStatus[p.status]}</Pill>

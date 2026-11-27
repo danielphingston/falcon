@@ -17,14 +17,15 @@ import {
   logChase,
   type Ctx,
 } from "./actions";
-import { todayISO } from "./dates";
-import { computeToday, titleOf } from "./today";
+import { dayBefore, todayISO } from "./dates";
+import { computeToday, isCarried, titleOf } from "./today";
+import { chaseResets, criticalityOf, resetChaseDates } from "./chase";
 import { BADGES, chaseStreak, levelFor, pointEvents, ringFor, ringStreak } from "./game";
 import { matchName, nameKey } from "./teamImport";
 import { AREA_IDS, areaLabel, programmeView, type AreaId } from "./audit";
 import { planReviewStatuses, planStatuses, programItemStatuses, reviewOutcomes } from "./schema";
 import { namedIn, planAwaitingReview, planProgress } from "./workplan";
-import { ME, cellHas, peopleIndex } from "./people";
+import { ME, cellHas, peopleIndex, pointOwner } from "./people";
 import { blockerText, engagementReadiness, itemsByStepsHeldUp, readinessLabels, rfiImpact } from "./readiness";
 import { OverlayStore, diffLines, isAutoApply, propose, recordTitle } from "./proposals";
 import { periodReport, shiftWeek, timesheet, timesheetText, weekDays, weekStart } from "./time";
@@ -59,6 +60,7 @@ const tool = <S extends z.ZodType>(def: ToolDef<S>): ToolDef<S> => def;
 
 const dateArg = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Date as YYYY-MM-DD");
 const optDate = dateArg.optional();
+const firstLine = (s: string) => s.split(/\r?\n/)[0];
 const timeArg = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
@@ -116,6 +118,22 @@ async function findAnywhere(store: Store, id: string): Promise<{ table: TableNam
   return null;
 }
 
+/** A work plan step on the engagement, by id or step number ("4.2"). */
+async function resolveStep(store: Store, engagementId: string, ref: string) {
+  const steps = (await store.list("planItems")).filter((i) => !i.deleted && i.engagementId === engagementId);
+  const hit = steps.find((i) => i.id === ref) ?? steps.find((i) => i.number === ref.trim().replace(/^step\s*/i, ""));
+  if (!hit) throw new Error(`No work plan step "${ref}" on this engagement. Use get_work_plan for ids.`);
+  return hit;
+}
+
+/** Owner for a review point: "me" when I don't prepare the WP, a person, or unset (= the preparer). */
+async function pointAssignee(ctx: Ctx, ref: string | undefined, wp: { preparerId?: string; myRole: string }) {
+  if (ref === undefined) return undefined;
+  const p = await resolvePerson(ctx, ref, "team");
+  if (p) return p.id === wp.preparerId ? undefined : p.id;
+  return !wp.preparerId && wp.myRole === "preparer" ? undefined : ME;
+}
+
 async function resolveWorkpaper(store: Store, ref: string, engagement?: string) {
   const all = (await store.list("workpapers")).filter((w) => !w.deleted);
   const engId = engagement ? (await resolveEngagement(store, engagement)).id : undefined;
@@ -142,12 +160,12 @@ export const tools = [
     name: "get_today",
     kind: "read",
     description:
-      "Today's briefing: overdue and due-today items, IRL items and follow-ups to chase today (grouped by person), work papers waiting for my review, and open review points on my own work papers.",
+      "Today's briefing, in the order to work it: overdue items (tasks, carried-forward tasks, review points I owe, follow-ups), due today, work papers waiting for my review, chases due today (grouped by client contact; items with no contact listed separately), work plan steps unlocked since yesterday, review points I owe, and past meetings.",
     input: z.object({}),
     async run(ctx) {
       const snap = await loadSnapshot(ctx.store);
       const today = todayISO(ctx.now?.());
-      const v = computeToday(snap, today);
+      const v = computeToday(snap, today, dayBefore(today));
       const eng = new Map(snap.engagements.map((e) => [e.id, e.name]));
       const line = (i: Parameters<typeof titleOf>[0]) => ({
         id: i.record.id,
@@ -158,11 +176,14 @@ export const tools = [
       });
       return {
         today,
-        overdue: v.overdue.map((d) => ({ ...line(d), due: d.due })),
+        overdue: v.overdue.map((d) => ({ ...line(d), due: d.due, ...(d.kind === "task" && isCarried(d.record, today) ? { carried: true } : {}) })),
         dueToday: v.dueToday.map(line),
-        chase: v.chase.map((g) => ({ person: g.person?.name ?? "Unassigned", items: g.items.map(line) })),
         toReview: v.toReview.map((w) => ({ id: w.id, ref: w.ref, title: w.title, engagement: eng.get(w.engagementId), status: w.status })),
-        pointsToClear: v.pointsToClear.map((p) => ({ id: p.id, text: p.text, workpaperId: p.workpaperId })),
+        chase: v.chase.map((g) => ({ person: g.person?.name ?? g.name ?? "Unassigned", items: g.items.map(line) })),
+        needAContact: v.assignContact.map((r) => ({ id: r.id, number: r.number, title: firstLine(r.description), engagement: eng.get(r.engagementId) })),
+        unlockedSinceYesterday: v.unlocked.map((u) => ({ id: u.step.id, number: u.step.number, step: firstLine(u.step.text), owner: u.step.assignee, now: readinessLabels[u.to] })),
+        pointsToClear: v.pointsToClear.map((p) => ({ id: p.id, text: p.text, workpaperId: p.workpaperId, due: p.due })),
+        pastMeetings: v.past.map((t) => ({ id: t.id, title: t.title, on: t.due, time: t.dueTime })),
         doneToday: v.doneToday.length,
       };
     },
@@ -372,15 +393,18 @@ export const tools = [
       engagement: z.string().optional(),
       points: z.array(z.string()).min(1),
       raisedBy: z.string().optional().describe("Who raised them; omit for me"),
-      assignedTo: z.string().optional().describe("Who must address them; omit for me"),
+      assignedTo: z.string().optional().describe("Who must address them ('me' for me); omit for the work paper's preparer"),
+      due: optDate.describe("When they should be addressed by"),
+      step: z.string().optional().describe("Work plan step number or id they relate to"),
     }),
-    async run(ctx, { workpaper, engagement, points, raisedBy, assignedTo }) {
+    async run(ctx, { workpaper, engagement, points, raisedBy, assignedTo, due, step }) {
       const w = await resolveWorkpaper(ctx.store, workpaper, engagement);
       const raisedById = (await resolvePerson(ctx, raisedBy, "manager"))?.id;
-      const assignedToId = (await resolvePerson(ctx, assignedTo, "team"))?.id;
+      const assignedToId = await pointAssignee(ctx, assignedTo, w);
+      const planItemId = step ? (await resolveStep(ctx.store, w.engagementId, step)).id : undefined;
       const created = [];
       for (const text of points)
-        created.push((await create(ctx, "reviewPoints", { workpaperId: w.id, engagementId: w.engagementId, text, raisedById, assignedToId })).record.id);
+        created.push((await create(ctx, "reviewPoints", { workpaperId: w.id, engagementId: w.engagementId, text, raisedById, assignedToId, due, planItemId })).record.id);
       if (w.status !== "points_raised") await update(ctx, "workpapers", w.id, { status: "points_raised" });
       return { workpaper: w.ref, added: created.length, ids: created };
     },
@@ -389,14 +413,31 @@ export const tools = [
   tool({
     name: "update_review_point",
     kind: "write",
-    description: "Mark a review point addressed or cleared (or reopen it).",
-    input: z.object({ id: z.string(), status: z.enum(reviewPointStatuses) }),
-    async run(ctx, { id, status }) {
-      const r = await update(ctx, "reviewPoints", id, {
-        status,
-        clearedAt: status === "cleared" ? (ctx.now?.() ?? new Date()).toISOString() : null,
-      });
-      return { updated: brief("reviewPoints", r.record) };
+    description: "Mark a review point addressed or cleared (or reopen it), reassign it, set its due date or link it to a work plan step.",
+    input: z.object({
+      id: z.string(),
+      status: z.enum(reviewPointStatuses).optional(),
+      assignedTo: z.string().optional().describe("Who must address it ('me' for me; the preparer's name puts it back with the preparer)"),
+      due: z.union([dateArg, z.literal("")]).optional().describe("YYYY-MM-DD, or empty to clear"),
+      step: z.string().optional().describe("Work plan step number or id; empty to unlink"),
+    }),
+    async run(ctx, { id, status, assignedTo, due, step }) {
+      const point = await ctx.store.get("reviewPoints", id);
+      if (!point || point.deleted) throw new Error(`No review point ${id}`);
+      const wp = await ctx.store.get("workpapers", point.workpaperId);
+      const patch: Record<string, unknown> = {};
+      if (status) {
+        patch.status = status;
+        patch.clearedAt = status === "cleared" ? (ctx.now?.() ?? new Date()).toISOString() : null;
+      }
+      if (assignedTo !== undefined) patch.assignedToId = (await pointAssignee(ctx, assignedTo, wp ?? { myRole: "preparer" })) ?? null;
+      if (due !== undefined) patch.due = due || null;
+      if (step !== undefined) patch.planItemId = step ? (await resolveStep(ctx.store, point.engagementId, step)).id : null;
+      const r = await update(ctx, "reviewPoints", id, patch as never);
+      // Reopening or reassigning a point on a final work paper sends it back to points raised.
+      const reopened = wp && !wp.deleted && wp.status === "final" && (assignedTo !== undefined || status === "open");
+      if (reopened) await update(ctx, "workpapers", wp.id, { status: "points_raised" });
+      return { updated: brief("reviewPoints", r.record), ...(reopened ? { warning: `Work paper ${wp.ref} was final; it's back to points raised.` } : {}) };
     },
   }),
 
@@ -435,6 +476,24 @@ export const tools = [
     }),
     async run(ctx, { id, ...patch }) {
       return { updated: brief("infoRequests", (await update(ctx, "infoRequests", id, patch)).record) };
+    },
+  }),
+
+  tool({
+    name: "reset_chase_dates",
+    kind: "write",
+    description:
+      "Set open RFI items' next chase dates by criticality: request date (or last chase) + 3 working days for High, 5 for Medium (also blank), 7 for Low, skipping weekends. Only items with a client contact. Use after the cadence changed or an import set odd dates.",
+    input: z.object({ engagement: z.string().optional().describe("Only this engagement; omit for all") }),
+    async run(ctx, { engagement }) {
+      const e = engagement ? await resolveEngagement(ctx.store, engagement) : undefined;
+      const settings = await ctx.store.getSettings();
+      const preview = chaseResets(await ctx.store.list("infoRequests"), settings, e?.id);
+      await resetChaseDates(ctx, e?.id);
+      return {
+        changed: preview.length,
+        items: preview.slice(0, 30).map((x) => ({ id: x.item.id, number: x.item.number, criticality: criticalityOf(x.item), from: x.item.nextChaseOn, to: x.next })),
+      };
     },
   }),
 
@@ -670,7 +729,9 @@ export const tools = [
       const prepares = wps.filter((w) => (isMeRef ? w.myRole === "preparer" : p && w.preparerId === p.id));
       const reviews = wps.filter((w) => (isMeRef ? w.myRole === "reviewer" : p && w.reviewerId === p.id));
       const tasks = snap.tasks.filter((t) => !t.deleted && (!e || t.engagementId === e.id) && (isMeRef ? !t.assigneeId : p && t.assigneeId === p.id));
-      const points = snap.reviewPoints.filter((r) => !r.deleted && inScope(r.engagementId) && p && r.assignedToId === p.id);
+      // Review points they owe: assigned to them, else on work papers they prepare. Private notes never count.
+      const wpById = new Map(snap.workpapers.map((w) => [w.id, w]));
+      const points = snap.reviewPoints.filter((r) => !r.deleted && inScope(r.engagementId) && !!who && pointOwner(r, wpById.get(r.workpaperId)) === who);
       const procs = snap.programItems.filter((i) => !i.deleted && inScope(i.engagementId) && p && i.assigneeId === p.id);
       const pick = <T,>(list: T[], done: (x: T) => boolean) => (includeDone ? list : list.filter((x) => !done(x)));
 
@@ -704,7 +765,7 @@ export const tools = [
         })),
         workpapers: pick([...new Set([...prepares, ...reviews])], wpDone).map((w) => ({ id: w.id, ref: w.ref, title: w.title, engagement: engName.get(w.engagementId), status: w.status, role: prepares.includes(w) ? "prepares" : "reviews" })),
         tasks: pick(tasks, (t) => t.status === "done").map((t) => ({ id: t.id, title: t.title, due: t.due, status: t.status })),
-        reviewPoints: pick(points, (r) => r.status === "cleared").map((r) => ({ id: r.id, text: r.text, status: r.status })),
+        reviewPoints: pick(points, (r) => r.status === "cleared").map((r) => ({ id: r.id, workpaper: wpById.get(r.workpaperId)?.ref, text: r.text, status: r.status, due: r.due })),
       };
     },
   }),

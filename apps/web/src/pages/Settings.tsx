@@ -17,6 +17,16 @@ import { deleteTemplate, exportLibrary, importLibrary, useFirmLearned, useFirmTe
 import { connectGoogle, disconnectGoogle, hasScope, readAuth, warmGoogle } from "../lib/google";
 import { markSignedOut, scheduleSync, syncNow, useSyncStatus } from "../lib/sync";
 import { toast } from "../lib/toast";
+import { runTool } from "@falcon/core";
+import { store } from "../db";
+
+/** Recomputes every open RFI item's chase date; the changes go to the Inbox as one proposal to review. */
+async function resetChaseDates() {
+  const r = await runTool({ store, by: "app", propose: true }, "reset_chase_dates", {});
+  if (!r.ok) return toast({ message: r.error ?? "Couldn't reset chase dates", tone: "error" });
+  if (!r.proposalId) return toast({ message: "Chase dates already follow the cadence" });
+  toast({ message: "New chase dates are in the Inbox to review" });
+}
 
 // Static about / privacy / terms pages in public/, outside the router.
 const PAGES = import.meta.env.BASE_URL;
@@ -115,7 +125,7 @@ export function SettingsPage() {
           />
         </Row>
         {(["client", "manager", "team"] as const).map((k) => (
-          <Row key={k} label={`Chase ${k === "client" ? "clients" : k === "manager" ? "managers" : "team"} every`}>
+          <Row key={k} label={`Follow-ups: nudge ${k === "client" ? "clients" : k === "manager" ? "managers" : "team"} every`}>
             <div className="flex items-center gap-2">
               <input
                 type="number"
@@ -129,6 +139,14 @@ export function SettingsPage() {
             </div>
           </Row>
         ))}
+        <Row label="RFI items: chase by criticality">
+          <div className="space-y-1.5">
+            <p className="text-sm muted">High every 3, Medium (or blank) every 5, Low every 7 working days, Monday to Friday. Items with nobody to chase are listed on Today, not counted.</p>
+            <button className="btn btn-soft btn-sm" onClick={() => void resetChaseDates()}>
+              Reset chase dates
+            </button>
+          </div>
+        </Row>
       </Group>
 
       <Group title="Look & feel">

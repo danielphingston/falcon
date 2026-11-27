@@ -107,3 +107,18 @@ export function unmatchedNames(cells: (string | undefined)[], ix: PeopleIndex): 
     }
   return [...out.values()].sort((a, b) => b.count - a.count || a.raw.localeCompare(b.raw));
 }
+
+/**
+ * Who owes a review point (build brief 3.3): the person it's assigned to, else
+ * the work paper's preparer ("me" when I prepare it). Undefined when nobody is
+ * known. Private points are reviewer notes and owed by nobody.
+ */
+export function pointOwner(
+  point: { assignedToId?: string; private?: boolean },
+  wp: { preparerId?: string; myRole?: "preparer" | "reviewer" } | undefined,
+): string | undefined {
+  if (point.private) return undefined;
+  if (point.assignedToId) return point.assignedToId;
+  if (wp?.preparerId) return wp.preparerId;
+  return wp?.myRole === "preparer" ? ME : undefined;
+}
