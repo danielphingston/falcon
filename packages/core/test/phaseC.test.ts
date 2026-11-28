@@ -54,7 +54,8 @@ describe("chase cadence by criticality (4.2)", () => {
     expect(r.proposalId).toBeTruthy();
     expect((await store.get("infoRequests", a.id))!.nextChaseOn).toBe("2026-11-17");
     const p = (await store.get("proposals", r.proposalId!))!;
-    expect(p.changes.map((x) => x.recordId).sort()).toEqual([a.id, b.id].sort());
+    // Items with no contact are reset too (brief v2 B1), so their date is right once someone is assigned.
+    expect(p.changes.map((x) => x.recordId).sort()).toEqual([a.id, b.id, none.id].sort());
     expect(p.changes.find((x) => x.recordId === a.id)!.after.nextChaseOn).toBe("2026-11-25");
     expect(p.changes.find((x) => x.recordId === b.id)!.after.nextChaseOn).toBe("2026-11-23");
     void none;

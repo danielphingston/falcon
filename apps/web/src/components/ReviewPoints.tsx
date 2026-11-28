@@ -10,6 +10,38 @@ import { Checkbox, Pill, statusTone } from "./ui";
 
 type Challenge = NonNullable<ReviewPoint["challenges"]>[number];
 
+/** Gives every open point on the work paper to one person (e.g. all AR points to the preparer who'll clear them). */
+function OwnerForAll({ wp, points }: { wp: WorkPaper; points: ReviewPoint[] }) {
+  const snap = useSnapshot();
+  if (!snap || !points.length) return null;
+  const people = snap.people.filter((x) => !x.deleted && x.role !== "client").sort((a, b) => a.name.localeCompare(b.name));
+  return (
+    <select
+      className="rounded-md border border-[var(--border)] bg-transparent px-1.5 py-0.5 text-xs"
+      value=""
+      aria-label="Owner for every open point"
+      onChange={(e) => {
+        const v = e.target.value;
+        if (!v) return;
+        const id = v === "preparer" ? null : v;
+        void act(`Owner set on ${points.length} points`, async (ctx) => {
+          for (const p of points) await update(ctx, "reviewPoints", p.id, { assignedToId: id as never });
+          if (wp.status === "final") await update(ctx, "workpapers", wp.id, { status: "points_raised" });
+        });
+      }}
+    >
+      <option value="">Owner for all…</option>
+      <option value="preparer">The preparer</option>
+      <option value="me">Me</option>
+      {people.map((x) => (
+        <option key={x.id} value={x.id}>
+          {x.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 /**
  * Who owes the point, by when, and which work plan step it's about (build
  * brief 3.3). Unassigned points belong to the work paper's preparer.
@@ -150,7 +182,8 @@ export function ReviewPointsPanel({ wp }: { wp: WorkPaper }) {
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold">Review points</h3>
-        <span className="text-xs muted">
+        <span className="flex items-center gap-2 text-xs muted">
+          {open > 1 && <OwnerForAll wp={wp} points={points.filter((p) => p.status !== "cleared" && !p.private)} />}
           {open} open · {points.length - open} cleared
         </span>
       </div>

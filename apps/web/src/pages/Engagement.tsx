@@ -26,9 +26,9 @@ import { QuickAdd } from "../components/QuickAdd";
 import { TLink, useTNavigate } from "../components/TLink";
 import { AnimatedList, EmptyState, ListItem, Pill, Segmented, statusTone } from "../components/ui";
 import { Avatar } from "../components/TeamAvatars";
-import { WorkProgramme } from "../components/WorkProgramme";
 import { RfiImport } from "../components/RfiImport";
-import { WorkPlanTab } from "../components/WorkPlan";
+import { ProgrammeTab } from "../components/Programme";
+import { openWorkpaperForm } from "../components/WorkpaperForm";
 import { act } from "../lib/act";
 import { useSettings, useSnapshot, useToday } from "../lib/hooks";
 import { toast } from "../lib/toast";
@@ -37,7 +37,6 @@ import { NotFound } from "./NotFound";
 const tabs = [
   { id: "overview", label: "Overview" },
   { id: "programme", label: "Programme" },
-  { id: "plan", label: "Work plan" },
   { id: "tasks", label: "Tasks" },
   { id: "workpapers", label: "Work papers" },
   { id: "points", label: "Review points" },
@@ -54,7 +53,8 @@ export function EngagementPage() {
   if (!snap) return null;
   const e = snap.engagements.find((x) => x.id === id);
   if (!e) return <NotFound />;
-  const active = (tabs.some((t) => t.id === tab) ? tab : "overview") as TabId;
+  // The old Work plan tab is part of Programme now.
+  const active = (tab === "plan" ? "programme" : tabs.some((t) => t.id === tab) ? tab : "overview") as TabId;
 
   const counts: Partial<Record<TabId, number>> = {
     tasks: snap.tasks.filter((t) => t.engagementId === e.id && t.status !== "done").length,
@@ -62,8 +62,7 @@ export function EngagementPage() {
     points: snap.reviewPoints.filter((p) => p.engagementId === e.id && p.status !== "cleared").length,
     irl: snap.infoRequests.filter((r) => r.engagementId === e.id && (r.status === "pending" || r.status === "partial")).length,
     followups: snap.followUps.filter((f) => f.engagementId === e.id && f.status === "waiting").length,
-    programme: snap.programItems.filter((i) => i.engagementId === e.id && i.status !== "done" && i.status !== "na").length,
-    plan: snap.planItems.filter((i) => i.engagementId === e.id && !i.deleted && i.applicable && i.status !== "closed").length,
+    programme: snap.planItems.filter((i) => i.engagementId === e.id && !i.deleted && i.applicable && i.status !== "closed").length,
   };
 
   return (
@@ -105,8 +104,7 @@ export function EngagementPage() {
       <AnimatePresence mode="wait">
         <motion.div key={active} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }}>
           {active === "overview" && <Overview snap={snap} id={e.id} />}
-          {active === "programme" && <WorkProgramme snap={snap} engagementId={e.id} />}
-          {active === "plan" && <WorkPlanTab snap={snap} engagementId={e.id} />}
+          {active === "programme" && <ProgrammeTab snap={snap} engagementId={e.id} />}
           {active === "tasks" && <TasksTab snap={snap} id={e.id} />}
           {active === "workpapers" && <WorkpapersTab snap={snap} id={e.id} />}
           {active === "points" && <PointsTab snap={snap} id={e.id} />}
@@ -266,7 +264,7 @@ function WorkpapersTab({ snap, id }: TabProps) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Segmented id="wp-role" value={role} onChange={setRole} options={[{ value: "all", label: "All" }, { value: "preparer", label: "I prepare" }, { value: "reviewer", label: "I review" }]} />
-        <button className="btn btn-primary" onClick={() => openEditor({ table: "workpapers", defaults: { engagementId: id, myRole: role === "reviewer" ? "reviewer" : "preparer" } })}>
+        <button className="btn btn-primary" onClick={() => openWorkpaperForm({ engagementId: id })}>
           <Icon name="plus" size={16} /> Work paper
         </button>
       </div>

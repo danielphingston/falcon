@@ -14,15 +14,18 @@ const ctx = () => ({ store, by: "app" as const });
 const why = (status: Proposal["status"], reason?: string) =>
   status === "stale" ? `Not applied: ${reason ?? "the record changed since."}` : status === "void" ? `Not applied: ${reason ?? "the record no longer exists."}` : "Already decided.";
 
-export async function accept(id: string): Promise<boolean> {
+export async function accept(id: string, choices?: string[]): Promise<boolean> {
   try {
-    const d = await acceptProposal(ctx(), id);
+    const d = await acceptProposal(ctx(), id, { choices });
     scheduleSync();
     if (d.status !== "accepted") {
       toast({ message: why(d.status, d.reason), tone: "error" });
       return false;
     }
-    toast({ message: "Applied", action: { label: "Undo", run: () => void undo(d.batchId!) } });
+    toast({
+      message: d.skipped?.length ? `Applied; ${d.skipped.length} choice${d.skipped.length === 1 ? "" : "s"} left out (changed since)` : "Applied",
+      action: { label: "Undo", run: () => void undo(d.batchId!) },
+    });
     void announceUnlocked(d.batchId);
     return true;
   } catch (e) {

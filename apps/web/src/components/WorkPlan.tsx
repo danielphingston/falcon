@@ -20,6 +20,7 @@ import {
   type Snapshot,
 } from "@falcon/core";
 import { act } from "../lib/act";
+import { changeStep } from "../lib/chain";
 import { useSettings } from "../lib/hooks";
 import { saveSettings } from "../db";
 import { toast } from "../lib/toast";
@@ -138,7 +139,7 @@ export function WorkPlanTab({ snap, engagementId }: { snap: Snapshot; engagement
  * your name is set): pick who each one is, once. Saved as an alias, so every
  * step with that name counts for that person straight away.
  */
-function UnmatchedNames({ items, people }: { items: PlanItem[]; people: Snapshot["people"] }) {
+export function UnmatchedNames({ items, people }: { items: PlanItem[]; people: Snapshot["people"] }) {
   const settings = useSettings();
   const ix = peopleIndex(people, settings);
   const list = unmatchedNames(
@@ -206,7 +207,7 @@ function UnmatchedNames({ items, people }: { items: PlanItem[]; people: Snapshot
   );
 }
 
-function Bar({ label, n, of, color }: { label: string; n: number; of: number; color: string }) {
+export function Bar({ label, n, of, color }: { label: string; n: number; of: number; color: string }) {
   return (
     <div>
       <div className="mb-1 flex justify-between text-sm">
@@ -268,8 +269,9 @@ function Steps({ items, hasReview }: { items: PlanItem[]; hasReview: boolean }) 
 
 export function StepRow({ item, hasReview, context }: { item: PlanItem; hasReview: boolean; context?: string }) {
   const cycle = <T extends string>(list: T[], cur: T) => list[(list.indexOf(cur) + 1) % list.length];
-  const setExec = () => act(null, (ctx) => update(ctx, "planItems", item.id, { status: cycle(EXEC, item.status) }));
-  const setReview = () => act(null, (ctx) => update(ctx, "planItems", item.id, { reviewStatus: cycle(REVIEW, item.reviewStatus ?? "open") }));
+  // Through the guard rail: closing needs a cleared workpaper (or N/A).
+  const setExec = () => changeStep(item, { status: cycle(EXEC, item.status) }, null);
+  const setReview = () => changeStep(item, { reviewStatus: cycle(REVIEW, item.reviewStatus ?? "open") }, null);
   const [first, ...rest] = item.text.split("\n");
   const off = !item.applicable;
   return (
@@ -307,7 +309,7 @@ export function StepRow({ item, hasReview, context }: { item: PlanItem; hasRevie
   );
 }
 
-function PlanInfoDetails({ info }: { info: NonNullable<Engagement["planInfo"]> }) {
+export function PlanInfoDetails({ info }: { info: NonNullable<Engagement["planInfo"]> }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="text-xs">
@@ -359,7 +361,7 @@ function PlanInfoDetails({ info }: { info: NonNullable<Engagement["planInfo"]> }
   );
 }
 
-function PlanImport({ open, onClose, engagement, existing, people }: { open: boolean; onClose: () => void; engagement: Engagement; existing: PlanItem[]; people: Snapshot["people"] }) {
+export function PlanImport({ open, onClose, engagement, existing, people }: { open: boolean; onClose: () => void; engagement: Engagement; existing: PlanItem[]; people: Snapshot["people"] }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState("");
   const [parsed, setParsed] = useState<ParsedPlan | null>(null);

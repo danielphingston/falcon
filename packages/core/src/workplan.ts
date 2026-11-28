@@ -7,6 +7,7 @@
  * updated plan updates the steps instead of duplicating them.
  */
 import { create, newId, update, type Ctx } from "./actions";
+import { programmeNameOf, tbAreaFor } from "./chain";
 import type { PlanItem } from "./schema";
 import type { SheetData } from "./teamImport";
 
@@ -337,7 +338,23 @@ export async function applyPlan(
     sheetStatus: s.status,
     sheetReviewStatus: s.reviewStatus,
   });
-  for (const s of plan.create) out.push(await create(batch, "planItems", { engagementId: opts.engagementId, ...fieldsOf(s) }));
+  // One programme per area (created on import; existing ones keep their names, even renamed).
+  const progs = (await ctx.store.list("programmes")).filter((p) => !p.deleted && p.engagementId === opts.engagementId);
+  const known = (await ctx.store.list("planItems")).filter((i) => !i.deleted && i.engagementId === opts.engagementId && i.programmeId);
+  let order = Math.max(0, ...progs.map((p) => p.order));
+  const progFor = async (s: PlanStep): Promise<string> => {
+    const name = programmeNameOf(s);
+    const k = name.toLowerCase();
+    // An area seen before goes to the programme its steps are in (it may have been renamed).
+    const prior = known.find((i) => programmeNameOf(i).toLowerCase() === k)?.programmeId;
+    const hit = (prior && progs.find((p) => p.id === prior)) || progs.find((p) => p.name.toLowerCase() === k);
+    if (hit) return hit.id;
+    const p = (await create(batch, "programmes", { engagementId: opts.engagementId, name, tbArea: tbAreaFor(name), order: ++order })).record;
+    progs.push(p);
+    out.push(p);
+    return p.id;
+  };
+  for (const s of plan.create) out.push(await create(batch, "planItems", { engagementId: opts.engagementId, ...fieldsOf(s), programmeId: await progFor(s) }));
   for (const u of plan.update) {
     const f = fieldsOf(u.step) as Record<string, unknown>;
     if (!u.takeStatus) delete f.status;

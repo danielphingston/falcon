@@ -277,17 +277,18 @@ export function Toaster() {
             }`}
           >
             <span>{t.message}</span>
-            {t.action && (
+            {[...(t.action ? [t.action] : []), ...(t.actions ?? [])].map((a) => (
               <button
-                className="font-semibold text-brand-200 underline-offset-2 hover:underline dark:text-brand-700"
+                key={a.label}
+                className="shrink-0 font-semibold text-brand-200 underline-offset-2 hover:underline dark:text-brand-700"
                 onClick={() => {
-                  t.action!.run();
+                  a.run();
                   dismiss(t.id);
                 }}
               >
-                {t.action.label}
+                {a.label}
               </button>
-            )}
+            ))}
           </motion.div>
         ))}
       </AnimatePresence>

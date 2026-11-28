@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import {
+import { rfiTitle,
   todayISO,
+  setWorkpaperStatus,
   daysBetween,
   labels,
   logChase,
@@ -28,7 +29,7 @@ export function useLookups() {
   const workpapers = byId(useTable("workpapers"));
   return { people, engagements, workpapers };
 }
-type Lookups = ReturnType<typeof useLookups>;
+export type Lookups = ReturnType<typeof useLookups>;
 
 function Due({ due, done, time }: { due?: string; done?: boolean; time?: string }) {
   const today = useToday();
@@ -77,17 +78,19 @@ export function TaskRow({ task, l, hideEngagement, tag }: { task: Task; l: Looku
       {tag === "past" && !done && <Pill tone="slate">Past</Pill>}
       {tag === "carried" && !done && (
         <>
-          <Pill tone="amber">Carried</Pill>
-          <button className="btn btn-soft btn-sm shrink-0" onClick={moveToday}>
-            Move to today
-          </button>
+          <Pill tone="amber">Carried{task.carried ? ` ×${task.carried}` : ""}</Pill>
+          {task.due && task.due < todayISO() && (
+            <button className="btn btn-soft btn-sm shrink-0" onClick={moveToday}>
+              Move to today
+            </button>
+          )}
         </>
       )}
     </ListItem>
   );
 }
 
-export function WorkpaperRow({ wp, l, openPoints, hideEngagement }: { wp: WorkPaper; l: Lookups; openPoints?: number; hideEngagement?: boolean }) {
+export function WorkpaperRow({ wp, l, openPoints, hideEngagement, rereview }: { wp: WorkPaper; l: Lookups; openPoints?: number; hideEngagement?: boolean; rereview?: boolean }) {
   const done = wp.status === "final";
   return (
     <ListItem id={wp.id} onClick={() => openEditor({ table: "workpapers", id: wp.id })}>
@@ -98,6 +101,7 @@ export function WorkpaperRow({ wp, l, openPoints, hideEngagement }: { wp: WorkPa
           {!hideEngagement && <span>{engName(l, wp.engagementId)}</span>}
           <span>{wp.myRole === "reviewer" ? `I review${wp.preparerId ? ` · by ${personName(l, wp.preparerId)}` : ""}` : `I prepare${wp.reviewerId ? ` · rev. ${personName(l, wp.reviewerId)}` : ""}`}</span>
           {!!openPoints && <span className="font-semibold text-amber-600">{openPoints} open point{openPoints > 1 ? "s" : ""}</span>}
+          {rereview && <span className="font-semibold text-emerald-600">Inputs now in – re-review</span>}
           <Due due={wp.due} done={done || wp.status === "cleared"} />
         </Meta>
       </div>
@@ -105,7 +109,7 @@ export function WorkpaperRow({ wp, l, openPoints, hideEngagement }: { wp: WorkPa
         className="rounded-lg border border-transparent bg-transparent py-1 text-right text-xs font-semibold outline-none hover:border-[var(--border)]"
         value={wp.status}
         onClick={(e) => e.stopPropagation()}
-        onChange={(e) => act(`${wp.ref} → ${labels.wpStatus[e.target.value as WorkPaper["status"]]}`, (ctx) => update(ctx, "workpapers", wp.id, { status: e.target.value as WorkPaper["status"] }))}
+        onChange={(e) => act(`${wp.ref} → ${labels.wpStatus[e.target.value as WorkPaper["status"]]}`, (ctx) => setWorkpaperStatus(ctx, wp.id, e.target.value as WorkPaper["status"]))}
         aria-label="Work paper status"
       >
         {Object.entries(labels.wpStatus).map(([v, label]) => (
@@ -129,9 +133,9 @@ export function IrlRow({ item, l, today, hideEngagement }: { item: InfoRequest; 
         onChange={(on) => act(on ? "Marked received" : "Reopened", (ctx) => update(ctx, "infoRequests", item.id, { status: on ? "received" : "pending" }))}
       />
       <div className="min-w-0 flex-1">
-        <p className={`truncate text-[15px] ${!open ? "line-through muted" : ""}`}>
+        <p className={`truncate text-[15px] ${!open ? "line-through muted" : ""}`} title={item.description}>
           {item.number && <span className="mr-1.5 font-mono text-xs muted">#{item.number}</span>}
-          {item.description.split("\n")[0]}
+          {rfiTitle(item.description)}
         </p>
         {item.clientComment && <p className="truncate text-xs text-sky-700 dark:text-sky-300">Client: {item.clientComment}</p>}
         <Meta>

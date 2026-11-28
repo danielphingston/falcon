@@ -11,12 +11,14 @@ import { useSettings, useSnapshot, useToday } from "../lib/hooks";
 import { completeTimer, mmss, remainingMs, useTimer } from "../lib/timer";
 import { toast } from "../lib/toast";
 import { EditorHost, openEditor } from "./Editor";
+import { WorkpaperFormHost } from "./WorkpaperForm";
 import { LevelUpOverlay } from "./LevelUp";
 import { SyncBadge } from "./SyncBadge";
 import { ChatLauncher } from "./ChatDrawer";
 import { startAutoSync } from "../lib/sync";
 import { startBridge } from "../lib/bridge";
 import { warmGoogle } from "../lib/google";
+import { carryTasksForward, proposeChaseResets, proposeMissingMigrations, proposeOrphans, tidyOpenItems } from "../lib/chain";
 import { Icon, type IconName } from "./Icon";
 import { TLink } from "./TLink";
 import { Toaster } from "./ui";
@@ -53,6 +55,7 @@ export function Layout() {
   useGameEngine(snap, today, settings);
   useTimerWatcher();
   useAlerts();
+  useChainSetup();
   useUpdatePrompt();
   useShortcuts();
   useEffect(() => startAutoSync(), []);
@@ -130,6 +133,7 @@ export function Layout() {
       {!pathname.startsWith("/time") && <TimerPill />}
       <ChatLauncher />
       <EditorHost />
+      <WorkpaperFormHost />
       <LevelUpOverlay />
       <Toaster />
     </MotionConfig>
@@ -172,6 +176,27 @@ function TimerPill() {
       )}
     </AnimatePresence>
   );
+}
+
+/**
+ * Sets up programmes on engagements that don't have them yet, as Inbox
+ * proposals. Waits a little so a first sync can bring in one another device made.
+ */
+function useChainSetup() {
+  const today = useToday();
+  useEffect(() => {
+    const id = setTimeout(() => {
+      void proposeMissingMigrations().catch(() => undefined);
+      void proposeChaseResets().catch(() => undefined);
+      void proposeOrphans().catch(() => undefined);
+    }, 15_000);
+    return () => clearTimeout(id);
+  }, []);
+  // Each morning (and on the first open after days away): carry open tasks to today.
+  useEffect(() => {
+    void carryTasksForward(today).catch(() => undefined);
+    void tidyOpenItems().catch(() => undefined);
+  }, [today]);
 }
 
 /** Logs the session when the countdown ends, including one that ended while the app was closed. */

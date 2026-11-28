@@ -256,8 +256,16 @@ export interface EngagementReadiness {
 }
 
 /** The books: TB / GL dump / accounting backup. Users can mark or unmark any item (`books`). */
-const BOOKS = /\b(tb|trial balance|gl dump|general ledger|books? of accounts?|accounting (backup|data|dump)|tally (backup|data)|ledger dump|transaction list)\b/i;
-export const isBooksItem = (r: Pick<InfoRequest, "description"> & { books?: boolean }): boolean => r.books ?? BOOKS.test(r.description.split("\n")[0]);
+const BOOKS = /\b(tb|trial balance|gl (dump|extract)|general ledger|ledger dump|accounting (backup|data|dump)|(tally|erp) (backup|data|dump|credentials?|access|login)|day ?book|transaction list)\b/i;
+const BOA = /\bbooks? of accounts?\b/i;
+/** "Place of maintenance of books of accounts", "list of locations where books are kept": about the books, not the books (brief v2 B4). */
+const ABOUT_BOOKS = /\b(list|address(es)?|place|locations?|where|maintenance|maintained|kept|polic(y|ies))\b[^.]*\bbooks? of accounts?\b/i;
+/** The item *is* the books (TB, GL, accounting backup, Tally / ERP data or access), not one that only mentions them. */
+export const isBooksItem = (r: Pick<InfoRequest, "description"> & { books?: boolean }): boolean => {
+  if (r.books !== undefined) return r.books;
+  const first = r.description.split("\n")[0];
+  return BOOKS.test(first) || (BOA.test(first) && !ABOUT_BOOKS.test(first));
+};
 
 /**
  * The 10.2 rules: N/A + pending is Blocked; N/A + received is Ready;
@@ -297,7 +305,9 @@ export function engagementReadiness(
 
   const out: StepReadiness[] = steps.map((step) => {
     const set = step.inputs;
-    const guess = set ? undefined : guessInputs(step, items);
+    // The offline matcher only guesses for imported plan steps; TB / AI / hand-added steps are linked on purpose.
+    const imported = !step.source || step.source === "work_plan_import";
+    const guess = set ? undefined : imported ? guessInputs(step, items) : { rfiIds: [] as string[], missing: [] as string[] };
     const rfiIds = (set?.rfiIds ?? guess!.rfiIds).filter((id) => byId.has(id));
     const extra = set?.extra ?? guess!.missing.map((name) => ({ name, received: false }));
     const none = !!set?.none;

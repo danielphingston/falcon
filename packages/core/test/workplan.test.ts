@@ -172,7 +172,10 @@ describe("work plans", () => {
     // Cara reviews the receivables steps; one is executed in the edited sheet.
     const plan = await runTool(ctx, "get_work_plan", { engagement: "widget", person: "Dev" });
     const step = (plan.result as { steps: { id: string; text: string }[] }).steps[0];
-    expect((await runTool(ctx, "update_plan_step", { id: step.id, status: "closed" })).ok).toBe(true);
+    // A step closes through its workpaper (brief v2 A4): closing it bare is refused…
+    expect((await runTool(ctx, "update_plan_step", { id: step.id, status: "closed" })).ok).toBe(false);
+    // …"review pending" (executed, waiting for review) is still a status the plan can set.
+    expect((await runTool(ctx, "update_plan_step", { id: step.id, status: "review" })).ok).toBe(true);
     const cara = (await runTool(ctx, "get_workload", { person: "Cara" })).result as { summary: Record<string, number> };
     expect(cara.summary.workPlanStepsWaitingForTheirReview).toBe(1);
     expect(namedIn("Ravi/Dev", "Dev Rao")).toBe(true);

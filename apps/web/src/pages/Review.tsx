@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ME, cellHas, labels, liveEngagementIds, peopleIndex, planReviewQueue, wpStatuses, type WorkPaper } from "@falcon/core";
 import { openEditor } from "../components/Editor";
+import { openWorkpaperForm } from "../components/WorkpaperForm";
 import { Icon } from "../components/Icon";
 import { StepRow } from "../components/WorkPlan";
 import { WorkpaperRow, useLookups } from "../components/rows";
@@ -43,7 +44,7 @@ export function ReviewPage() {
             {waiting} waiting for my review{steps.length ? ` · ${steps.length} work plan step${steps.length === 1 ? "" : "s"} pending review` : ""} · {toFix} of mine with points to fix
           </p>
         </div>
-        <button className="btn btn-primary" onClick={() => openEditor({ table: "workpapers", defaults: { myRole: role } })}>
+        <button className="btn btn-primary" onClick={() => openWorkpaperForm()}>
           <Icon name="plus" size={16} /> Work paper
         </button>
       </header>

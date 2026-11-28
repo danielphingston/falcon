@@ -11,6 +11,10 @@ import {
   remove,
   todayISO,
   update,
+  setWorkpaperStatus,
+  shortTitle,
+  stepState,
+  stepStateLabels,
   isBooksItem,
   engagementReadiness,
   readinessLabels,
@@ -28,6 +32,10 @@ import { AliasEditor } from "./AliasEditor";
 import { Checkbox, Pill, Sheet, statusTone } from "./ui";
 import { ReviewChecklist } from "./ReviewChecklist";
 import { ReviewPointsPanel } from "./ReviewPoints";
+import { OpenItemsPanel } from "./OpenItems";
+import { ProceduresPanel } from "./Procedures";
+import { openStepLinks, openWorkpaperForm } from "./WorkpaperForm";
+import { changeStep, markStepNa } from "../lib/chain";
 
 // ---------- Editor stack (any component can open one) ----------
 
@@ -45,6 +53,12 @@ const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 
 export function openEditor(e: Omit<Entry, "key" | "open">) {
+  // A new workpaper always asks which worksteps it covers (brief v2 A3).
+  if (e.table === "workpapers" && !e.id) {
+    const d = e.defaults as { engagementId?: string; stepIds?: string[] } | undefined;
+    openWorkpaperForm({ engagementId: d?.engagementId, stepIds: d?.stepIds });
+    return;
+  }
   entries = [...entries, { ...e, key: nextKey++, open: true }];
   emit();
 }
@@ -89,8 +103,10 @@ const nouns: Record<TableName, string> = {
   days: "day",
   achievements: "badge",
   trialBalances: "trial balance",
-  programItems: "programme step",
-  planItems: "work plan step",
+  programItems: "programme item",
+  planItems: "workstep",
+  programmes: "programme",
+  checkSets: "review check set",
 };
 
 function recordToValues(table: TableName, r: Record<string, unknown> | null | undefined): FormValues {
@@ -145,7 +161,17 @@ function Editor({ entry }: { entry: Entry }) {
       const p = patch as Record<string, unknown>;
       const before = record as Record<string, unknown>;
       if (t === "alerts" && p.fireAt !== before.fireAt) p.fired = false;
-      const res = await act("Saved", (ctx) => update(ctx, t, entry.id!, p as never));
+      // Steps go through the guard rail; marking one N/A unlinks its workpaper (and offers to delete it).
+      if (t === "planItems") {
+        const step = record as EntityMap["planItems"];
+        const toNa = p.applicable === false && step.applicable;
+        if (toNa) delete p.applicable;
+        const res = await changeStep(step, p as never);
+        if (res && toNa) await markStepNa({ ...step, ...(res[0]?.record ?? {}) } as EntityMap["planItems"]);
+        if (res) close();
+        return;
+      }
+      const res = await act("Saved", (ctx) => (t === "workpapers" && p.status !== before.status && p.status ? setWorkpaperStatus(ctx, entry.id!, p.status as never).then(() => update(ctx, t, entry.id!, p as never)) : update(ctx, t, entry.id!, p as never)));
       if (res) close();
     }
   };
@@ -191,11 +217,14 @@ function Extras({ table, record }: { table: TableName; record: AnyEntity }) {
   const remindable = table === "tasks" || table === "infoRequests" || table === "followUps" || table === "workpapers";
   return (
     <div className="mt-5 space-y-5">
+      {table === "workpapers" && <WorkpaperSteps wp={record as EntityMap["workpapers"]} />}
+      {table === "workpapers" && <OpenItemsPanel wp={record as EntityMap["workpapers"]} />}
       {table === "workpapers" && <ReviewChecklist wp={record as EntityMap["workpapers"]} />}
       {table === "workpapers" && <ReviewPointsPanel wp={record as EntityMap["workpapers"]} />}
       {table === "infoRequests" && <RfiDetails item={record as EntityMap["infoRequests"]} />}
       {table === "infoRequests" && <BooksToggle item={record as EntityMap["infoRequests"]} />}
       {table === "infoRequests" && <RfiFeeds item={record as EntityMap["infoRequests"]} />}
+      {table === "people" && (record as EntityMap["people"]).role === "client" && <ContactEngagements person={record as EntityMap["people"]} />}
       {table === "people" && (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold">Also written as</h3>
@@ -206,6 +235,8 @@ function Extras({ table, record }: { table: TableName; record: AnyEntity }) {
           />
         </div>
       )}
+      {table === "planItems" && <StepWorkpaper item={record as EntityMap["planItems"]} />}
+      {table === "planItems" && <ProceduresPanel step={record as EntityMap["planItems"]} />}
       {table === "planItems" && <StepInputs item={record as EntityMap["planItems"]} />}
       {table === "planItems" && <PlanDetails item={record as EntityMap["planItems"]} />}
       {(table === "infoRequests" || table === "followUps") && (
@@ -227,6 +258,93 @@ function Extras({ table, record }: { table: TableName; record: AnyEntity }) {
         >
           <Icon name="bell" size={16} /> Remind me
         </button>
+      )}
+    </div>
+  );
+}
+
+/** The engagements a client contact belongs to (brief v2 C5): tasks or chases elsewhere warn. */
+function ContactEngagements({ person }: { person: EntityMap["people"] }) {
+  const snap = useSnapshot();
+  const ids = person.engagementIds ?? [];
+  const engs = (snap?.engagements ?? []).filter((e) => e.status !== "closed" || ids.includes(e.id)).sort((a, b) => a.name.localeCompare(b.name));
+  const toggle = (id: string) => {
+    const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
+    void act("Engagements updated", (ctx) => update(ctx, "people", person.id, { engagementIds: next.length ? next : null }));
+  };
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold">Engagements</h3>
+      <p className="text-xs muted">The client engagements this contact belongs to. A task or chase on another engagement that names them shows a warning.</p>
+      <div className="flex flex-wrap gap-1.5">
+        {engs.map((e) => (
+          <button key={e.id} onClick={() => toggle(e.id)} className={`rounded-full border px-2.5 py-1 text-xs ${ids.includes(e.id) ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--border)]"}`}>
+            {e.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** The worksteps a workpaper covers, with "Edit linked steps". */
+function WorkpaperSteps({ wp }: { wp: EntityMap["workpapers"] }) {
+  const snap = useSnapshot();
+  const steps = (snap?.planItems ?? []).filter((s) => s.workpaperId === wp.id).sort((a, b) => a.order - b.order);
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold">Worksteps covered</h3>
+        <button className="btn btn-soft btn-sm" onClick={() => openStepLinks(wp.id)}>
+          Edit linked steps
+        </button>
+      </div>
+      {steps.length ? (
+        <ul className="divide-y divide-[var(--border)] rounded-xl border border-[var(--border)]">
+          {steps.map((s) => (
+            <li key={s.id}>
+              <button className="w-full px-3 py-2 text-left text-sm" onClick={() => openEditor({ table: "planItems", id: s.id })}>
+                <span className="mr-1.5 font-mono text-xs muted">{s.number}</span>
+                {s.text.split("\n")[0]}
+                <span className="block text-xs muted">{s.assignee || "No owner"}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs muted">{wp.adHoc ? "Ad-hoc: not linked to any step." : "Not linked to any step yet; it's listed under Unlinked workpapers."}</p>
+      )}
+    </div>
+  );
+}
+
+/** A step's workpaper (its status is the step's status), or a shortcut to create one. */
+function StepWorkpaper({ item }: { item: EntityMap["planItems"] }) {
+  const snap = useSnapshot();
+  const wp = item.workpaperId ? snap?.workpapers.find((w) => w.id === item.workpaperId) : undefined;
+  const prep = wp?.preparerId ? snap?.people.find((p) => p.id === wp.preparerId)?.name : undefined;
+  const state = stepState(item, wp);
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold">
+        Workpaper <span className="font-normal muted">· step is {stepStateLabels[state]}</span>
+      </h3>
+      {wp ? (
+        <button className="w-full rounded-xl border border-[var(--border)] px-3 py-2 text-left text-sm" onClick={() => openEditor({ table: "workpapers", id: wp.id })}>
+          <span className="mr-1.5 font-mono text-xs muted">{wp.ref}</span>
+          {shortTitle(wp.title)}
+          <span className="block text-xs muted">
+            {labels.wpStatus[wp.status]}
+            {prep ? ` · prepared by ${prep}` : ""}
+            {prep && item.assignee && !item.assignee.toLowerCase().includes(prep.split(" ")[0].toLowerCase()) ? ` · step owner ${item.assignee}` : ""}
+          </span>
+        </button>
+      ) : item.applicable ? (
+        <button className="btn btn-soft w-full" onClick={() => openWorkpaperForm({ stepIds: [item.id] })}>
+          <Icon name="plus" size={14} /> Create workpaper
+        </button>
+      ) : (
+        <p className="text-xs muted">N/A: needs no workpaper.</p>
       )}
     </div>
   );

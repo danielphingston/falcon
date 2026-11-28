@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useRef, useState } from "react";
-import { applyRfi, matchName, parseRfi, planRfi, statusKey, type InfoRequest, type ParsedRfi, type Person, type RfiParseOptions, type SheetData } from "@falcon/core";
+import { rfiTitle, applyRfi, matchName, parseRfi, planRfi, statusKey, type InfoRequest, type ParsedRfi, type Person, type RfiParseOptions, type SheetData } from "@falcon/core";
 import { useSnapshot } from "../lib/hooks";
 import { act } from "../lib/act";
 import { readSpreadsheet } from "../lib/spreadsheet";
@@ -181,7 +181,7 @@ export function RfiImport({
                 <p className="text-xs font-semibold">Updates</p>
                 {plan.update.slice(0, 8).map((u) => (
                   <p key={u.id} className="text-xs">
-                    <span className="font-mono muted">#{u.item.number}</span> {u.item.description.split("\n")[0].slice(0, 70)} <span className="muted">· {u.changes.join(", ")}</span>
+                    <span className="font-mono muted">#{u.item.number}</span> {rfiTitle(u.item.description).slice(0, 70)} <span className="muted">· {u.changes.join(", ")}</span>
                   </p>
                 ))}
                 {plan.update.length > 8 && <p className="text-xs muted">…and {plan.update.length - 8} more</p>}

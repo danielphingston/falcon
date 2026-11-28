@@ -28,8 +28,12 @@ import { namedIn, planAwaitingReview, planProgress } from "./workplan";
 import { ME, cellHas, peopleIndex, pointOwner } from "./people";
 import { blockerText, engagementReadiness, itemsByStepsHeldUp, readinessLabels, rfiImpact } from "./readiness";
 import { OverlayStore, diffLines, isAutoApply, propose, recordTitle } from "./proposals";
+import { chainView, createWorkpaperForSteps, filterChain, moveIntoProcedures, setWorkpaperStatus, setWorkpaperSteps, stepStates, stepsOf, tbAreaFor, updateStep, workpaperDefaults, type ChainFilter } from "./chain";
+import { addCheckForNextTime, answerReviewItem, outcomeLabel, scopedReview, startGuidedReview, type ReviewItem } from "./guided";
+import type { Readiness } from "./readiness";
 import { periodReport, shiftWeek, timesheet, timesheetText, weekDays, weekStart } from "./time";
 import { loadSnapshot, type Store } from "./store";
+import { rfiTitle } from "./rfi";
 import {
   engagementStatuses,
   followUpTypes,
@@ -45,6 +49,7 @@ import {
   type Engagement,
   type Person,
   type TableName,
+  type WorkPaper,
 } from "./schema";
 
 export interface ToolDef<S extends z.ZodType = z.ZodType> {
@@ -126,6 +131,69 @@ async function resolveStep(store: Store, engagementId: string, ref: string) {
   return hit;
 }
 
+/** A step by id (any engagement), or by number on the given engagement. */
+async function findStep(ctx: Ctx, ref: string, engagement?: string) {
+  const byId = await ctx.store.get("planItems", ref);
+  if (byId && !byId.deleted) return byId;
+  if (!engagement) throw new Error(`No workstep with id "${ref}". Pass the engagement to find it by number.`);
+  const e = await resolveEngagement(ctx.store, engagement);
+  return resolveStep(ctx.store, e.id, ref);
+}
+
+/** A workpaper by id, ref or (part of) its title. */
+async function findWorkpaper(ctx: Ctx, ref: string, engagement?: string) {
+  try {
+    return await resolveWorkpaper(ctx.store, ref, engagement);
+  } catch (e) {
+    const all = (await ctx.store.list("workpapers")).filter((w) => !w.deleted);
+    const engId = engagement ? (await resolveEngagement(ctx.store, engagement)).id : undefined;
+    const hits = all.filter((w) => (!engId || w.engagementId === engId) && norm(w.title).includes(norm(ref)));
+    if (hits.length === 1) return hits[0];
+    if (hits.length > 1) throw new Error(`Several work papers match "${ref}": ${hits.map((w) => `${w.ref} ${w.title}`).join("; ")}. Pass the id or engagement.`);
+    throw e;
+  }
+}
+
+/**
+ * Client contacts carry the engagements they belong to (brief v2 C5). A
+ * warning when a task, follow-up or chase on one engagement names a client
+ * contact of another ("Sagar is on Project A, the task is on Project B").
+ */
+async function contactWarnings(ctx: Ctx, engagementId: string | undefined, opts: { personIds?: (string | undefined)[]; text?: string }): Promise<string[]> {
+  if (!engagementId) return [];
+  const people = (await ctx.store.list("people")).filter((p) => !p.deleted && p.role === "client" && p.engagementIds?.length);
+  const engs = new Map((await ctx.store.list("engagements")).map((e) => [e.id, e.name]));
+  const text = (opts.text ?? "").toLowerCase();
+  const out: string[] = [];
+  for (const p of people) {
+    if (p.engagementIds!.includes(engagementId)) continue;
+    const named = opts.personIds?.includes(p.id) || [p.name, ...(p.aliases ?? [])].some((n) => {
+      const first = n.split(/\s+/)[0].toLowerCase();
+      return first.length >= 3 && new RegExp(`\\b${first.replace(/[^a-z0-9]/g, "")}\\b`).test(text);
+    });
+    if (named) out.push(`${p.name} is a client contact on ${p.engagementIds!.map((id) => engs.get(id) ?? "another engagement").join(", ")}, not ${engs.get(engagementId) ?? "this engagement"}. Check it's the right engagement.`);
+  }
+  return out;
+}
+
+/** Notes a client contact against an engagement (when they're first used there). */
+async function noteContactEngagement(ctx: Ctx, personId: string | undefined, engagementId: string) {
+  if (!personId) return;
+  const p = await ctx.store.get("people", personId);
+  if (!p || p.deleted || p.role !== "client" || p.engagementIds?.includes(engagementId)) return;
+  if (p.engagementIds?.length) return; // belongs elsewhere: warn, don't silently widen
+  await update(ctx, "people", p.id, { engagementIds: [engagementId] });
+}
+
+/** An RFI item on the engagement, by id or number ("5.1"). */
+async function resolveRfi(store: Store, engagementId: string, ref: string) {
+  const items = (await store.list("infoRequests")).filter((r) => !r.deleted && r.engagementId === engagementId);
+  const k = ref.trim().replace(/^#|^rfi\s*/i, "");
+  const hit = items.find((r) => r.id === k) ?? items.find((r) => r.number.trim() === k);
+  if (!hit) throw new Error(`No RFI item "${ref}" on this engagement.`);
+  return hit;
+}
+
 /** Owner for a review point: "me" when I don't prepare the WP, a person, or unset (= the preparer). */
 async function pointAssignee(ctx: Ctx, ref: string | undefined, wp: { preparerId?: string; myRole: string }) {
   if (ref === undefined) return undefined;
@@ -180,7 +248,7 @@ export const tools = [
         dueToday: v.dueToday.map(line),
         toReview: v.toReview.map((w) => ({ id: w.id, ref: w.ref, title: w.title, engagement: eng.get(w.engagementId), status: w.status })),
         chase: v.chase.map((g) => ({ person: g.person?.name ?? g.name ?? "Unassigned", items: g.items.map(line) })),
-        needAContact: v.assignContact.map((r) => ({ id: r.id, number: r.number, title: firstLine(r.description), engagement: eng.get(r.engagementId) })),
+        needAContact: v.assignContact.map((r) => ({ id: r.id, number: r.number, title: rfiTitle(r.description), engagement: eng.get(r.engagementId) })),
         unlockedSinceYesterday: v.unlocked.map((u) => ({ id: u.step.id, number: u.step.number, step: firstLine(u.step.text), owner: u.step.assignee, now: readinessLabels[u.to] })),
         pointsToClear: v.pointsToClear.map((p) => ({ id: p.id, text: p.text, workpaperId: p.workpaperId, due: p.due })),
         pastMeetings: v.past.map((t) => ({ id: t.id, title: t.title, on: t.due, time: t.dueTime })),
@@ -312,7 +380,8 @@ export const tools = [
       const engagementId = engagement ? (await resolveEngagement(ctx.store, engagement)).id : undefined;
       const assigneeId = (await resolvePerson(ctx, assignee, "team"))?.id;
       const r = await create(ctx, "tasks", { ...rest, dueTime: time, engagementId, assigneeId });
-      return { created: brief("tasks", r.record), calendar: time ? "Added to Google Calendar at this time once synced (if Google is connected)." : undefined };
+      const warnings = await contactWarnings(ctx, engagementId, { personIds: [assigneeId], text: `${rest.title} ${rest.notes ?? ""}` });
+      return { created: brief("tasks", r.record), calendar: time ? "Added to Google Calendar at this time once synced (if Google is connected)." : undefined, ...(warnings.length ? { warning: warnings.join(" ") } : {}) };
     },
   }),
 
@@ -341,38 +410,147 @@ export const tools = [
   tool({
     name: "create_workpaper",
     kind: "write",
-    description: "Track a work paper. myRole 'preparer' = I execute it; 'reviewer' = I review someone else's.",
+    description:
+      "Create a work paper for the worksteps it covers. Pass `steps` (step numbers like '7.1' or ids) or `adHoc: true` for one not linked to any step; with neither, nothing is created and the engagement's unlinked steps come back so you can ask the user which ones. Ref, title, preparer and reviewer default from the steps.",
     input: z.object({
       engagement: z.string(),
-      ref: z.string().describe("WP reference, e.g. B.2"),
-      title: z.string(),
-      myRole: z.enum(["preparer", "reviewer"]),
-      workstream: z.string().optional().describe("Workstream name, e.g. NWC"),
-      preparer: z.string().optional().describe("Preparer's name when I'm the reviewer"),
-      reviewer: z.string().optional().describe("Reviewer's name when I'm the preparer"),
+      steps: z.array(z.string()).optional().describe("Worksteps it covers: numbers ('4.1') or ids"),
+      adHoc: z.boolean().optional().describe("True only when the user says it covers no workstep"),
+      ref: z.string().optional().describe("WP reference; defaults to the first step's number"),
+      title: z.string().optional().describe("Defaults to a short form of the first step's text"),
+      preparer: z.string().optional().describe("Who prepares it ('me' for me); defaults to the steps' owner"),
+      reviewer: z.string().optional().describe("Who reviews it ('me' for me); defaults to the steps' reviewer"),
       status: z.enum(wpStatuses).optional(),
       due: optDate,
+      notes: z.string().optional(),
+      openItems: z.array(z.object({ text: z.string(), rfi: z.string().optional().describe("RFI item number or id it waits on") })).optional(),
+      workstream: z.string().optional().describe("Workstream name, e.g. NWC"),
+      myRole: z.enum(["preparer", "reviewer"]).optional().describe("Deprecated: give preparer / reviewer instead"),
     }),
-    async run(ctx, { engagement, workstream, preparer, reviewer, ...rest }) {
+    async run(ctx, { engagement, steps, adHoc, ref, title, preparer, reviewer, status, due, notes, openItems, workstream, myRole }) {
       const e = await resolveEngagement(ctx.store, engagement);
+      if (!steps?.length && !adHoc) {
+        const snap = await loadSnapshot(ctx.store);
+        const free = snap.planItems.filter((s) => s.engagementId === e.id && s.applicable && !s.workpaperId).sort((a, b) => a.order - b.order);
+        return {
+          created: false,
+          needsSteps: "Which worksteps does this work paper cover? Ask the user, then call again with steps (or adHoc: true if it covers none).",
+          unlinkedSteps: free.slice(0, 150).map((s) => ({ number: s.number, id: s.id, area: s.area, text: firstLine(s.text), owner: s.assignee })),
+        };
+      }
+      const stepIds: string[] = [];
+      for (const r of steps ?? []) stepIds.push((await resolveStep(ctx.store, e.id, r)).id);
+      const snap = await loadSnapshot(ctx.store);
+      const settings = await ctx.store.getSettings();
+      const d = workpaperDefaults(stepIds, snap, settings);
       let workstreamId: string | undefined;
       if (workstream) {
         const ws = (await ctx.store.list("workstreams")).filter((w) => !w.deleted && w.engagementId === e.id);
-        workstreamId =
-          ws.find((w) => norm(w.name) === norm(workstream))?.id ??
-          (await create(ctx, "workstreams", { engagementId: e.id, name: workstream })).record.id;
+        workstreamId = ws.find((w) => norm(w.name) === norm(workstream))?.id ?? (await create(ctx, "workstreams", { engagementId: e.id, name: workstream })).record.id;
       }
-      const preparerId = (await resolvePerson(ctx, preparer, "team"))?.id;
-      const reviewerId = (await resolvePerson(ctx, reviewer, "manager"))?.id;
-      const r = await create(ctx, "workpapers", { ...rest, engagementId: e.id, workstreamId, preparerId, reviewerId });
-      return { created: brief("workpapers", r.record) };
+      const who = async (name: string | undefined, role: Person["role"], fallback: string | undefined) => {
+        if (name === undefined) return fallback;
+        const p = await resolvePerson(ctx, name, role);
+        return p?.id ?? ME;
+      };
+      // The old myRole still works: "preparer" means I prepare, "reviewer" that I review.
+      const prep = await who(preparer, "team", myRole === "preparer" ? ME : d.preparer);
+      const rev = await who(reviewer, "manager", myRole === "reviewer" ? ME : d.reviewer);
+      const items: { text: string; rfiItemId?: string }[] = [];
+      for (const o of openItems ?? []) items.push({ text: o.text, rfiItemId: o.rfi ? (await resolveRfi(ctx.store, e.id, o.rfi)).id : undefined });
+      const r = await createWorkpaperForSteps(ctx, {
+        engagementId: e.id,
+        stepIds,
+        adHoc: !stepIds.length && !!adHoc,
+        ref: ref ?? d.ref,
+        title: title ?? d.title,
+        preparerId: prep,
+        reviewerId: rev,
+        status,
+        due,
+        notes,
+        area: d.area,
+        workstreamId,
+        openItems: items,
+      });
+      return {
+        created: brief("workpapers", r.workpaper),
+        linkedSteps: stepIds.length,
+        ...(prep === undefined && stepIds.length ? { note: "No preparer known (the step owner isn't one person): ask the user who prepares it." } : {}),
+      };
+    },
+  }),
+
+  tool({
+    name: "update_workpaper",
+    kind: "write",
+    description:
+      "Change a work paper: status (cleared / final is refused while review points are open), notes, due date, preparer, reviewer, ref, title, open items (add, resolve or reopen; each can wait on an RFI item), and which worksteps it covers (`steps` sets them exactly; addSteps / removeSteps for single changes).",
+    input: z.object({
+      workpaper: z.string().describe("WP id or ref"),
+      engagement: z.string().optional().describe("Needed if the ref exists on several engagements"),
+      status: z.enum(wpStatuses).optional(),
+      notes: z.string().optional(),
+      due: z.union([dateArg, z.literal("")]).optional().describe("YYYY-MM-DD, or empty to clear"),
+      preparer: z.string().optional().describe("Name, or 'me'"),
+      reviewer: z.string().optional().describe("Name, or 'me'"),
+      ref: z.string().optional(),
+      title: z.string().optional(),
+      addOpenItems: z.array(z.object({ text: z.string(), rfi: z.string().optional().describe("RFI item number or id it waits on") })).optional(),
+      resolveOpenItems: z.array(z.string()).optional().describe("Open item ids, or words from their text"),
+      reopenOpenItems: z.array(z.string()).optional().describe("Open item ids, or words from their text"),
+      steps: z.array(z.string()).optional().describe("Exactly the worksteps it covers (numbers or ids)"),
+      addSteps: z.array(z.string()).optional(),
+      removeSteps: z.array(z.string()).optional(),
+    }),
+    async run(ctx, input) {
+      const w = await resolveWorkpaper(ctx.store, input.workpaper, input.engagement);
+      const patch: Record<string, unknown> = {};
+      if (input.notes !== undefined) patch.notes = input.notes;
+      if (input.ref !== undefined) patch.ref = input.ref;
+      if (input.title !== undefined) patch.title = input.title;
+      if (input.due !== undefined) patch.due = input.due || null;
+      if (input.preparer !== undefined) {
+        const p = await resolvePerson(ctx, input.preparer, "team");
+        patch.preparerId = p?.id ?? null;
+        patch.myRole = p ? "reviewer" : "preparer";
+      }
+      if (input.reviewer !== undefined) patch.reviewerId = (await resolvePerson(ctx, input.reviewer, "manager"))?.id ?? null;
+      let items = [...(w.openItems ?? [])];
+      const find = (q: string) => items.find((o) => o.id === q) ?? items.find((o) => o.text.toLowerCase().includes(q.toLowerCase()));
+      for (const o of input.addOpenItems ?? [])
+        items.push({ id: newId(), text: o.text, rfiItemId: o.rfi ? (await resolveRfi(ctx.store, w.engagementId, o.rfi)).id : undefined, resolved: false });
+      const marks: [string[] | undefined, boolean][] = [
+        [input.resolveOpenItems, true],
+        [input.reopenOpenItems, false],
+      ];
+      for (const [list, resolved] of marks)
+        for (const q of list ?? []) {
+          const hit = find(q);
+          if (!hit) throw new Error(`No open item matches "${q}" on ${w.ref}.`);
+          items = items.map((o) => (o.id === hit.id ? { ...o, resolved } : o));
+        }
+      if (input.addOpenItems || input.resolveOpenItems || input.reopenOpenItems) patch.openItems = items;
+      if (Object.keys(patch).length) await update(ctx, "workpapers", w.id, patch as never);
+      if (input.status && input.status !== w.status) await setWorkpaperStatus(ctx, w.id, input.status);
+      if (input.steps || input.addSteps || input.removeSteps) {
+        const cur = (await ctx.store.list("planItems")).filter((s) => !s.deleted && s.workpaperId === w.id).map((s) => s.id);
+        const ids = async (refs: string[] | undefined) => Promise.all((refs ?? []).map(async (r) => (await resolveStep(ctx.store, w.engagementId, r)).id));
+        let want = input.steps ? await ids(input.steps) : cur;
+        want = [...new Set([...want, ...(await ids(input.addSteps))])];
+        const drop = new Set(await ids(input.removeSteps));
+        await setWorkpaperSteps(ctx, w.id, want.filter((id) => !drop.has(id)));
+      }
+      const after = (await ctx.store.get("workpapers", w.id))!;
+      const steps = (await ctx.store.list("planItems")).filter((s) => !s.deleted && s.workpaperId === w.id).map((s) => s.number || firstLine(s.text));
+      return { updated: brief("workpapers", after), steps };
     },
   }),
 
   tool({
     name: "update_workpaper_status",
     kind: "write",
-    description: "Move a work paper through: not_started → in_progress → prepared → in_review → points_raised → cleared → final.",
+    description: "Move a work paper through: not_started → in_progress → prepared → in_review → points_raised → cleared → final (cleared / final need every review point cleared). update_workpaper does this and more.",
     input: z.object({
       workpaper: z.string().describe("WP id or ref"),
       engagement: z.string().optional().describe("Needed if the ref exists on several engagements"),
@@ -380,7 +558,7 @@ export const tools = [
     }),
     async run(ctx, { workpaper, engagement, status }) {
       const w = await resolveWorkpaper(ctx.store, workpaper, engagement);
-      return { updated: brief("workpapers", (await update(ctx, "workpapers", w.id, { status })).record) };
+      return { updated: brief("workpapers", (await setWorkpaperStatus(ctx, w.id, status)).record) };
     },
   }),
 
@@ -413,31 +591,45 @@ export const tools = [
   tool({
     name: "update_review_point",
     kind: "write",
-    description: "Mark a review point addressed or cleared (or reopen it), reassign it, set its due date or link it to a work plan step.",
+    description: "Mark a review point addressed or cleared (or reopen it), reassign it (change its owner), set its due date or link it to a workstep. Pass `ids` to make the same change to several points at once (e.g. give every open point on a work paper to one person).",
     input: z.object({
-      id: z.string(),
+      id: z.string().optional().describe("One review point"),
+      ids: z.array(z.string()).optional().describe("Several review points, same change"),
       status: z.enum(reviewPointStatuses).optional(),
       assignedTo: z.string().optional().describe("Who must address it ('me' for me; the preparer's name puts it back with the preparer)"),
       due: z.union([dateArg, z.literal("")]).optional().describe("YYYY-MM-DD, or empty to clear"),
       step: z.string().optional().describe("Work plan step number or id; empty to unlink"),
     }),
-    async run(ctx, { id, status, assignedTo, due, step }) {
-      const point = await ctx.store.get("reviewPoints", id);
-      if (!point || point.deleted) throw new Error(`No review point ${id}`);
-      const wp = await ctx.store.get("workpapers", point.workpaperId);
-      const patch: Record<string, unknown> = {};
-      if (status) {
-        patch.status = status;
-        patch.clearedAt = status === "cleared" ? (ctx.now?.() ?? new Date()).toISOString() : null;
+    async run(ctx, { id, ids, status, assignedTo, due, step }) {
+      const all = [...new Set([...(id ? [id] : []), ...(ids ?? [])])];
+      if (!all.length) throw new Error("Pass id (or ids) of the review point(s).");
+      const out = [];
+      const warnings: string[] = [];
+      for (const pid of all) {
+        const point = await ctx.store.get("reviewPoints", pid);
+        if (!point || point.deleted) throw new Error(`No review point ${pid}`);
+        const wp = await ctx.store.get("workpapers", point.workpaperId);
+        const patch: Record<string, unknown> = {};
+        if (status) {
+          patch.status = status;
+          patch.clearedAt = status === "cleared" ? (ctx.now?.() ?? new Date()).toISOString() : null;
+        }
+        if (assignedTo !== undefined) patch.assignedToId = (await pointAssignee(ctx, assignedTo, wp ?? { myRole: "preparer" })) ?? null;
+        if (due !== undefined) patch.due = due || null;
+        if (step !== undefined) patch.planItemId = step ? (await resolveStep(ctx.store, point.engagementId, step)).id : null;
+        const r = await update(ctx, "reviewPoints", pid, patch as never);
+        out.push(r.record);
+        // Reopening or reassigning a point on a final work paper sends it back to points raised.
+        const cur = wp ? await ctx.store.get("workpapers", wp.id) : undefined;
+        if (cur && !cur.deleted && cur.status === "final" && (assignedTo !== undefined || status === "open")) {
+          await update(ctx, "workpapers", cur.id, { status: "points_raised" });
+          warnings.push(`Work paper ${cur.ref} was final; it's back to points raised.`);
+        }
       }
-      if (assignedTo !== undefined) patch.assignedToId = (await pointAssignee(ctx, assignedTo, wp ?? { myRole: "preparer" })) ?? null;
-      if (due !== undefined) patch.due = due || null;
-      if (step !== undefined) patch.planItemId = step ? (await resolveStep(ctx.store, point.engagementId, step)).id : null;
-      const r = await update(ctx, "reviewPoints", id, patch as never);
-      // Reopening or reassigning a point on a final work paper sends it back to points raised.
-      const reopened = wp && !wp.deleted && wp.status === "final" && (assignedTo !== undefined || status === "open");
-      if (reopened) await update(ctx, "workpapers", wp.id, { status: "points_raised" });
-      return { updated: brief("reviewPoints", r.record), ...(reopened ? { warning: `Work paper ${wp.ref} was final; it's back to points raised.` } : {}) };
+      return {
+        ...(out.length === 1 ? { updated: brief("reviewPoints", out[0]) } : { updated: out.length, points: out.map((r) => ({ id: r.id, text: r.text.split("\n")[0].slice(0, 80), status: r.status, assignedToId: r.assignedToId })) }),
+        ...(warnings.length ? { warning: [...new Set(warnings)].join(" ") } : {}),
+      };
     },
   }),
 
@@ -456,26 +648,57 @@ export const tools = [
     async run(ctx, { engagement, requestedFrom, requestedOn, items }) {
       const e = await resolveEngagement(ctx.store, engagement);
       const requestedFromId = (await resolvePerson(ctx, requestedFrom, "client"))?.id;
+      await noteContactEngagement(ctx, requestedFromId, e.id);
+      const warnings = await contactWarnings(ctx, e.id, { personIds: [requestedFromId] });
       const on = requestedOn ?? todayISO(ctx.now?.());
       const ids = [];
       for (const it of items)
         ids.push((await createInfoRequest(ctx, { ...it, number: it.number ?? "", engagementId: e.id, requestedFromId, requestedOn: on })).record.id);
-      return { engagement: e.name, added: ids.length, ids };
+      return { engagement: e.name, added: ids.length, ids, ...(warnings.length ? { warning: warnings.join(" ") } : {}) };
     },
   }),
 
   tool({
     name: "update_irl_item",
     kind: "write",
-    description: "Update an IRL item: mark received/partial/na, change due date or add notes.",
+    description:
+      "Update an RFI / IRL item: mark received / partial / na, change the due date, add our notes, set who to chase, mark whether it is the books (TB / GL / accounting backup), or set / clear its imported columns (e.g. \"Remarks (Firm)\") with `fields`: an empty value clears that column.",
     input: z.object({
       id: z.string(),
       status: z.enum(irlStatuses).optional(),
       due: optDate,
       notes: z.string().optional(),
+      requestedFrom: z.string().optional().describe("Client contact to chase ('' to clear)"),
+      responsible: z.string().optional().describe("Client's person responsible as a name, when not a contact ('' to clear)"),
+      books: z.boolean().nullable().optional().describe("true / false to mark whether this item is the books; null to go back to the automatic guess"),
+      fields: z
+        .array(z.object({ label: z.string().describe("Column header as imported, e.g. 'Remarks (Firm)'"), value: z.string().describe("New value; empty clears it") }))
+        .optional(),
     }),
-    async run(ctx, { id, ...patch }) {
-      return { updated: brief("infoRequests", (await update(ctx, "infoRequests", id, patch)).record) };
+    async run(ctx, { id, fields, requestedFrom, responsible, books, ...patch }) {
+      const item = await ctx.store.get("infoRequests", id);
+      if (!item || item.deleted) throw new Error(`No RFI item ${id}`);
+      const p: Record<string, unknown> = { ...patch };
+      if (requestedFrom !== undefined) p.requestedFromId = requestedFrom ? ((await resolvePerson(ctx, requestedFrom, "client"))?.id ?? null) : null;
+      if (responsible !== undefined) p.responsible = responsible || null;
+      if (books !== undefined) p.books = books;
+      if (fields) {
+        let cur = [...(item.fields ?? [])];
+        const unknown: string[] = [];
+        for (const f of fields) {
+          const i = cur.findIndex((x) => norm(x.label) === norm(f.label));
+          const j = i >= 0 ? i : cur.findIndex((x) => norm(x.label).includes(norm(f.label)));
+          if (j < 0) {
+            if (f.value.trim()) cur.push({ label: f.label.trim(), value: f.value });
+            else unknown.push(f.label);
+            continue;
+          }
+          cur = f.value.trim() ? cur.map((x, k) => (k === j ? { ...x, value: f.value } : x)) : cur.filter((_, k) => k !== j);
+        }
+        if (unknown.length) throw new Error(`No imported column ${unknown.map((u) => `"${u}"`).join(", ")} on this item. Columns: ${(item.fields ?? []).map((x) => x.label).join(", ") || "none"}.`);
+        p.fields = cur.length ? cur : null;
+      }
+      return { updated: brief("infoRequests", (await update(ctx, "infoRequests", id, p as never)).record) };
     },
   }),
 
@@ -504,14 +727,17 @@ export const tools = [
     input: z.object({ ids: z.array(z.string()).min(1).describe("IRL item or follow-up ids") }),
     async run(ctx, { ids }) {
       const done = [];
+      const warnings: string[] = [];
       for (const id of ids) {
         const hit = await findAnywhere(ctx.store, id);
         if (!hit || (hit.table !== "infoRequests" && hit.table !== "followUps"))
           throw new Error(`${id} is not an IRL item or follow-up`);
         const r = await logChase(ctx, hit.table, id);
+        const rec = r.record as { engagementId?: string; requestedFromId?: string; personId?: string };
+        warnings.push(...(await contactWarnings(ctx, rec.engagementId, { personIds: [rec.requestedFromId ?? rec.personId] })));
         done.push({ id, next: "nextChaseOn" in r.record ? r.record.nextChaseOn : (r.record as { nextNudgeOn?: string }).nextNudgeOn });
       }
-      return { chased: done };
+      return { chased: done, ...(warnings.length ? { warning: [...new Set(warnings)].join(" ") } : {}) };
     },
   }),
 
@@ -530,7 +756,8 @@ export const tools = [
       const p = await resolvePerson(ctx, person, type === "client" ? "client" : type === "team" ? "team" : type === "manager" ? "manager" : "other");
       const engagementId = engagement ? (await resolveEngagement(ctx.store, engagement)).id : undefined;
       const r = await createFollowUp(ctx, { ...rest, type, personId: p?.id, engagementId });
-      return { created: brief("followUps", r.record) };
+      const warnings = await contactWarnings(ctx, engagementId, { personIds: [p?.id], text: rest.about });
+      return { created: brief("followUps", r.record), ...(warnings.length ? { warning: warnings.join(" ") } : {}) };
     },
   }),
 
@@ -620,7 +847,7 @@ export const tools = [
     name: "get_work_programme",
     kind: "read",
     description:
-      "An engagement's TB-driven work programme: materiality, area balances (current and prior), trend flags, and procedures with status, reviewer outcome and notes. Optionally one area.",
+      "Old name (use get_programme): an engagement's TB-driven work programme: materiality, area balances (current and prior), trend flags, and procedures with status, reviewer outcome and notes. Optionally one area.",
     input: z.object({
       engagement: z.string(),
       area: z.enum(AREA_IDS as [AreaId, ...AreaId[]]).optional(),
@@ -774,7 +1001,7 @@ export const tools = [
     name: "get_work_plan",
     kind: "read",
     description:
-      "An engagement's imported work plan / audit programme (the Work plan tab): progress, steps per person, and the steps with number, area, procedure, person responsible, execution status (open / wip / review = review pending / closed), review status, reviewer, risk and hours. Filter by person, status or area.",
+      "Old name (use get_programme): an engagement's imported work plan / audit programme: progress, steps per person, and the steps with number, area, procedure, person responsible, execution status (open / wip / review = review pending / closed), review status, reviewer, risk and hours. Filter by person, status or area.",
     input: z.object({
       engagement: z.string(),
       person: z.string().optional().describe("Only steps this person is responsible for or reviews"),
@@ -836,7 +1063,7 @@ export const tools = [
         ? snap.infoRequests
             .filter((r) => r.engagementId === e.id)
             .sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }))
-            .map((r) => ({ number: r.number, section: r.section, status: r.status, description: r.description.split("\n")[0].slice(0, 140) }))
+            .map((r) => ({ number: r.number, section: r.section, status: r.status, description: rfiTitle(r.description).slice(0, 140) }))
         : undefined;
       const full = person ? ((await resolvePerson(ctx, person).catch(() => undefined))?.name ?? person) : "";
       const plan = snap.planItems.filter((i) => !person || namedIn(i.assignee, full) || namedIn(i.assignee, person));
@@ -897,7 +1124,7 @@ export const tools = [
           engagement: e.name,
           holdingUpMost: itemsByStepsHeldUp(r, rfi)
             .slice(0, 15)
-            .map((x) => ({ number: x.item.number, item: x.item.description.split("\n")[0], status: x.item.status, steps: x.steps })),
+            .map((x) => ({ number: x.item.number, item: rfiTitle(x.item.description), status: x.item.status, steps: x.steps })),
         };
       const q = item.trim().replace(/^rfi\s*/i, "");
       const hit = rfi.find((x) => x.id === q) ?? rfi.find((x) => x.number === q) ?? rfi.find((x) => x.description.toLowerCase().includes(q.toLowerCase()));
@@ -905,7 +1132,7 @@ export const tools = [
       const imp = rfiImpact(r, hit);
       return {
         engagement: e.name,
-        item: { id: hit.id, number: hit.number, description: hit.description.split("\n")[0], status: hit.status },
+        item: { id: hit.id, number: hit.number, description: rfiTitle(hit.description), status: hit.status },
         feeds: imp.steps.length,
         steps: imp.steps.map((s) => ({
           number: s.step.number,
@@ -1000,7 +1227,7 @@ export const tools = [
   tool({
     name: "update_plan_step",
     kind: "write",
-    description: "Update a work plan step (ids from get_work_plan or get_workload): execution status, review status, notes, actual hours or person responsible.",
+    description: "Old name (use update_step): update a workstep: notes, actual hours or person responsible. Closing needs a cleared workpaper (or N/A).",
     input: z.object({
       id: z.string(),
       status: z.enum(planStatuses).optional(),
@@ -1011,8 +1238,357 @@ export const tools = [
     }),
     async run(ctx, { id, assignee, ...rest }) {
       const p = assignee ? await resolvePerson(ctx, assignee).catch(() => undefined) : undefined;
-      const r = await update(ctx, "planItems", id, { ...rest, ...(assignee === undefined ? {} : { assignee, assigneeId: p?.id }) });
+      const r = await updateStep(ctx, id, { ...rest, ...(assignee === undefined ? {} : { assignee, assigneeId: p?.id }) });
       return { updated: brief("planItems", r.record) };
+    },
+  }),
+
+  tool({
+    name: "get_programme",
+    kind: "read",
+    description:
+      "An engagement's programme: programmes (work plan areas, renamable) → worksteps (number, text, owner, reviewer, status from the workpaper, RFI readiness, procedures) → the workpaper covering each (ref, title, status). Works without a TB; with one, TB balances and trend flags per programme. Filter by person, status, readiness, area or words. Also lists workpapers covering no step. Replaces get_work_plan and get_work_programme.",
+    input: z.object({
+      engagement: z.string(),
+      person: z.string().optional().describe("Only steps this person owns, or whose workpaper they prepare / review ('me' for me)"),
+      status: z.enum([...stepStates, "open_any"] as [string, ...string[]]).optional().describe("open, wip, to_review, in_review, points_raised, closed, na, or open_any (not closed)"),
+      readiness: z.enum(["ready", "canStart", "blocked", "likelyNa", "noInput", "suggested", "unlinked"]).optional(),
+      area: z.string().optional().describe("Programme name, e.g. 'Sales'"),
+      q: z.string().optional().describe("Words in the step, an RFI number or a workpaper ref / title"),
+    }),
+    async run(ctx, { engagement, person, status, readiness, area, q }) {
+      const snap = await loadSnapshot(ctx.store);
+      const settings = await ctx.store.getSettings();
+      const e = await resolveEngagement(ctx.store, engagement);
+      const view = chainView(snap, e.id, todayISO(ctx.now?.()), settings);
+      const who = person ? (["me", "myself", "i"].includes(norm(person)) ? ME : (await resolvePerson(ctx, person).catch(() => undefined))?.id) : undefined;
+      if (person && !who) throw new Error(`No person matches "${person}".`);
+      const prog = area ? view.programmes.find((g) => norm(g.name).includes(norm(area))) : undefined;
+      if (area && !prog) throw new Error(`No programme matches "${area}". Programmes: ${view.programmes.map((g) => g.name).join(", ")}.`);
+      const shown = filterChain(view, { person: who, state: status as ChainFilter["state"], readiness: readiness as Readiness | undefined, programmeId: prog?.id, q }, snap, settings);
+      const people = new Map(snap.people.map((p) => [p.id, p.name]));
+      const tb = snap.trialBalances.find((t) => t.engagementId === e.id && !t.deleted);
+      const tbView = tb ? programmeView(tb) : undefined;
+      return {
+        engagement: e.name,
+        statuses: "Step status comes from its workpaper: open (none / not started), wip, to_review (prepared), in_review, points_raised, closed (cleared / final), na.",
+        needsSetup: view.needsSetup || view.pendingItems.length > 0 ? "Some steps aren't under a programme yet: the set-up is a proposal in the user's Inbox." : undefined,
+        programmes: shown.map((g) => {
+          const plan = tbView && g.tbArea ? tbView.plans.find((p) => p.area === g.tbArea) : undefined;
+          return {
+            id: g.programme?.id,
+            name: g.name,
+            tbArea: g.tbArea,
+            closed: g.closed,
+            applicable: g.applicable,
+            tb: plan ? { current: Math.round(plan.current), prior: plan.prior === undefined ? undefined : Math.round(plan.prior), flags: tbView!.insights.filter((i) => i.area === g.tbArea && i.status === "flag").map((i) => i.title) } : undefined,
+            steps: g.steps.map((x) => ({
+              id: x.step.id,
+              number: x.step.number,
+              text: firstLine(x.step.text),
+              owner: x.step.assignee,
+              reviewer: x.step.reviewer,
+              status: x.state,
+              readiness: x.readiness && x.state !== "closed" && x.state !== "na" ? readinessLabels[x.readiness] : undefined,
+              source: x.step.source ?? "work_plan_import",
+              workpaper: x.wp ? { id: x.wp.id, ref: x.wp.ref, title: x.wp.title, status: x.wp.status, preparer: x.wp.preparerId ? people.get(x.wp.preparerId) : undefined } : undefined,
+              preparerDiffersFromOwner: x.preparerDiffers || undefined,
+              closedWithoutWorkpaper: x.closedNoWp || undefined,
+              procedures: x.step.procedures?.length ? x.step.procedures.map((p) => ({ text: firstLine(p.text), why: p.why, done: p.done })) : undefined,
+              notes: x.step.notes,
+            })),
+          };
+        }),
+        unlinkedWorkpapers: view.unlinked.map((w) => ({ id: w.id, ref: w.ref, title: w.title, status: w.status, adHoc: !!w.adHoc })),
+      };
+    },
+  }),
+
+  tool({
+    name: "update_step",
+    kind: "write",
+    description:
+      "Change a workstep: owner, reviewer, N/A (applicable false; its workpaper is kept and unlinked), notes, actual hours, or its procedures (add, tick done, remove). Its status comes from its workpaper: to move it, change the workpaper (update_workpaper), or link one (link_workpaper). Replaces update_plan_step.",
+    input: z.object({
+      step: z.string().describe("Step id, or its number with the engagement"),
+      engagement: z.string().optional().describe("Needed when `step` is a number"),
+      owner: z.string().optional().describe("Name as it should show (e.g. 'Asha'), or 'me'"),
+      reviewer: z.string().optional(),
+      applicable: z.boolean().optional().describe("false = N/A (needs no workpaper)"),
+      notes: z.string().optional(),
+      actualHours: z.number().min(0).optional(),
+      addProcedures: z.array(z.object({ text: z.string(), why: z.string().optional() })).optional(),
+      doneProcedures: z.array(z.string()).optional().describe("Procedure ids or words from their text, to tick done"),
+      removeProcedures: z.array(z.string()).optional().describe("Procedure ids or words from their text"),
+    }),
+    async run(ctx, i) {
+      const s = await findStep(ctx, i.step, i.engagement);
+      const patch: Record<string, unknown> = {};
+      if (i.owner !== undefined) {
+        const p = await resolvePerson(ctx, i.owner).catch(() => undefined);
+        patch.assignee = p?.name ?? i.owner;
+        patch.assigneeId = p?.id ?? null;
+      }
+      if (i.reviewer !== undefined) {
+        const p = await resolvePerson(ctx, i.reviewer).catch(() => undefined);
+        patch.reviewer = p?.name ?? i.reviewer;
+        patch.reviewerId = p?.id ?? null;
+      }
+      if (i.notes !== undefined) patch.notes = i.notes;
+      if (i.actualHours !== undefined) patch.actualHours = i.actualHours;
+      if (i.applicable !== undefined) {
+        patch.applicable = i.applicable;
+        if (!i.applicable && s.workpaperId) patch.workpaperId = null;
+      }
+      let procs = [...(s.procedures ?? [])];
+      const find = (q: string) => procs.find((p) => p.id === q) ?? procs.find((p) => p.text.toLowerCase().includes(q.toLowerCase()));
+      for (const p of i.addProcedures ?? []) procs.push({ id: newId(), text: p.text, why: p.why, done: false });
+      for (const q of i.doneProcedures ?? []) {
+        const hit = find(q);
+        if (!hit) throw new Error(`No procedure matches "${q}" on step ${s.number}.`);
+        procs = procs.map((p) => (p.id === hit.id ? { ...p, done: true } : p));
+      }
+      for (const q of i.removeProcedures ?? []) {
+        const hit = find(q);
+        if (!hit) throw new Error(`No procedure matches "${q}" on step ${s.number}.`);
+        procs = procs.filter((p) => p.id !== hit.id);
+      }
+      if (i.addProcedures || i.doneProcedures || i.removeProcedures) patch.procedures = procs.length ? procs : null;
+      const r = await updateStep(ctx, s.id, patch as never);
+      return { updated: brief("planItems", r.record), ...(i.applicable === false && s.workpaperId ? { note: "The step's workpaper was kept and unlinked; ask the user whether to delete it." } : {}) };
+    },
+  }),
+
+  tool({
+    name: "add_steps",
+    kind: "write",
+    description:
+      "Add worksteps (each with optional procedures) to an engagement's programme, e.g. 'Revenue to Collections – map monthly revenue collected to bank' under Sales. Creates the programme if missing. `proceduresFromSteps` turns existing steps into this step's procedures (they're removed as steps). Optionally link a workpaper to the new steps.",
+    input: z.object({
+      engagement: z.string(),
+      programme: z.string().describe("Programme (area) name, e.g. 'Sales'; created if new"),
+      steps: z
+        .array(
+          z.object({
+            text: z.string(),
+            number: z.string().optional(),
+            owner: z.string().optional(),
+            reviewer: z.string().optional(),
+            procedures: z.array(z.object({ text: z.string(), why: z.string().optional() })).optional(),
+            proceduresFromSteps: z.array(z.string()).optional().describe("Step ids / numbers to move in as procedures"),
+          }),
+        )
+        .min(1),
+      workpaper: z.string().optional().describe("Workpaper (id or ref) the new steps are covered by"),
+    }),
+    async run(ctx, { engagement, programme, steps, workpaper }) {
+      const e = await resolveEngagement(ctx.store, engagement);
+      const progs = (await ctx.store.list("programmes")).filter((p) => !p.deleted && p.engagementId === e.id);
+      const prog =
+        progs.find((p) => norm(p.name) === norm(programme)) ??
+        progs.find((p) => norm(p.name).includes(norm(programme))) ??
+        (await create(ctx, "programmes", { engagementId: e.id, name: programme.trim(), tbArea: tbAreaFor(programme), order: Math.max(0, ...progs.map((p) => p.order)) + 1 })).record;
+      const all = (await ctx.store.list("planItems")).filter((s) => !s.deleted && s.engagementId === e.id);
+      let order = Math.max(0, ...all.map((s) => s.order));
+      const wp = workpaper ? await resolveWorkpaper(ctx.store, workpaper, e.id) : undefined;
+      const made = [];
+      for (const st of steps) {
+        const owner = st.owner ? await resolvePerson(ctx, st.owner).catch(() => undefined) : undefined;
+        const rev = st.reviewer ? await resolvePerson(ctx, st.reviewer).catch(() => undefined) : undefined;
+        const rec = (
+          await create(ctx, "planItems", {
+            engagementId: e.id,
+            programmeId: prog.id,
+            area: prog.name,
+            number: st.number ?? "",
+            text: st.text,
+            assignee: owner?.name ?? st.owner,
+            assigneeId: owner?.id,
+            reviewer: rev?.name ?? st.reviewer,
+            reviewerId: rev?.id,
+            source: ctx.by === "app" ? "manual" : "ai",
+            order: ++order,
+            procedures: st.procedures?.map((p) => ({ id: newId(), text: p.text, why: p.why, done: false })),
+            workpaperId: wp?.id,
+          })
+        ).record;
+        if (st.proceduresFromSteps?.length) {
+          const ids = [];
+          for (const ref of st.proceduresFromSteps) ids.push((await findStep(ctx, ref, e.id)).id);
+          await moveIntoProcedures(ctx, ids, rec.id);
+        }
+        made.push(rec.id);
+      }
+      const after = await Promise.all(made.map((id) => ctx.store.get("planItems", id)));
+      return { programme: prog.name, added: made.length, steps: after.map((s) => ({ id: s!.id, text: firstLine(s!.text), procedures: s!.procedures?.length ?? 0, workpaper: wp?.ref })) };
+    },
+  }),
+
+  tool({
+    name: "link_workpaper",
+    kind: "write",
+    description: "Link worksteps to a workpaper (the steps then show its status) or unlink them. A step already on another workpaper moves to this one. Use update_workpaper with `steps` to set the exact list.",
+    input: z.object({
+      workpaper: z.string().describe("Workpaper id or ref"),
+      engagement: z.string().optional(),
+      link: z.array(z.string()).optional().describe("Step numbers or ids to link"),
+      unlink: z.array(z.string()).optional().describe("Step numbers or ids to unlink"),
+    }),
+    async run(ctx, { workpaper, engagement, link, unlink }) {
+      const w = await resolveWorkpaper(ctx.store, workpaper, engagement);
+      const cur = (await ctx.store.list("planItems")).filter((s) => !s.deleted && s.workpaperId === w.id).map((s) => s.id);
+      const add = await Promise.all((link ?? []).map(async (r) => (await findStep(ctx, r, w.engagementId)).id));
+      const drop = new Set(await Promise.all((unlink ?? []).map(async (r) => (await findStep(ctx, r, w.engagementId)).id)));
+      const r = await setWorkpaperSteps(ctx, w.id, [...new Set([...cur, ...add])].filter((id) => !drop.has(id)));
+      return { workpaper: w.ref, linked: r.linked.length, unlinked: r.unlinked.length };
+    },
+  }),
+
+  tool({
+    name: "get_guided_review",
+    kind: "read",
+    description:
+      "The guided review. Without a workpaper: reviews in progress or recently finished (engagement, workpaper, reviewer, started, progress x/y). With one (id, ref or title): every item in order: firm-wide basics, then per linked workstep the step itself, its checks, procedures and inputs, each with its source, the preparer's mark (done / not done), the reviewer's outcome (pending / ✓ / ⚑ / n.a.), note and linked review point; plus checks for next time and the review points (open / cleared). Firm-library items are kept on the user's device and aren't shown here.",
+    input: z.object({
+      workpaper: z.string().optional().describe("Workpaper id, ref or title"),
+      engagement: z.string().optional(),
+    }),
+    async run(ctx, { workpaper, engagement }) {
+      const snap = await loadSnapshot(ctx.store);
+      const settings = await ctx.store.getSettings();
+      const eng = new Map(snap.engagements.map((e) => [e.id, e.name]));
+      const people = new Map(snap.people.map((p) => [p.id, p.name]));
+      const reviewerOf = (w: WorkPaper) => (w.reviewerId ? people.get(w.reviewerId) : "me");
+      if (!workpaper) {
+        const live = snap.workpapers.filter((w) => w.reviewStartedAt || w.reviewAnswers?.length);
+        return {
+          reviews: live
+            .map((w) => {
+              const r = scopedReview(snap, w, settings);
+              return { id: w.id, engagement: eng.get(w.engagementId), workpaper: `${w.ref} ${w.title}`, reviewer: reviewerOf(w), started: w.reviewStartedAt, progress: `${r.answered}/${r.total}`, status: w.status, scoped: r.steps.length > 0 };
+            })
+            .sort((a, b) => (b.started ?? "").localeCompare(a.started ?? "")),
+        };
+      }
+      const w = await findWorkpaper(ctx, workpaper, engagement);
+      const r = scopedReview(snap, w, settings);
+      const points = snap.reviewPoints.filter((p) => p.workpaperId === w.id && !p.private);
+      const line = (i: ReviewItem) => ({
+        key: i.key,
+        kind: i.kind,
+        text: i.text,
+        source: i.source,
+        preparer: i.prep === "done" ? "done" : i.prep === "not_done" ? "not done by preparer" : undefined,
+        outcome: outcomeLabel(i.answer),
+        note: i.note,
+        reviewPoint: i.pointId ? points.find((p) => p.id === i.pointId)?.text : undefined,
+        rfi: i.kind === "input" ? `${i.rfiNumber}: ${i.rfiStatus}` : undefined,
+        explainedBy: i.openItems?.length ? i.openItems.map((o) => `${o.text}${o.rfiNumber ? ` (RFI ${o.rfiNumber})` : ""}`) : undefined,
+      });
+      return {
+        engagement: eng.get(w.engagementId),
+        workpaper: { id: w.id, ref: w.ref, title: w.title, status: w.status, preparer: w.preparerId ? people.get(w.preparerId) : "me", reviewer: reviewerOf(w) },
+        library: "Firm-wide basics, then the linked worksteps' checks. Firm-library (template) items stay on the user's device and aren't shown.",
+        started: r.startedAt,
+        progress: `${r.answered}/${r.total} answered`,
+        basics: r.basics.map(line),
+        steps: r.steps.map((s) => ({ step: `${s.step.number} ${firstLine(s.step.text)}`.trim(), stepId: s.step.id, checksSetUp: !s.needsChecks, items: s.items.map(line) })),
+        checksForNextTime: r.steps.flatMap((s) => (s.step.procedures ?? []).filter((p) => p.addedFromReview).map((p) => ({ step: s.step.number, text: p.text, addedOn: p.addedFromReview }))),
+        reviewPoints: { open: r.points.open, cleared: r.points.cleared, list: points.map((p) => ({ id: p.id, text: p.text, status: p.status, owner: (() => { const o = pointOwner(p, w); return o === ME ? "me" : o ? people.get(o) : undefined; })() })) },
+        openItems: (w.openItems ?? []).map((o) => ({ text: o.text, resolved: o.resolved, rfi: o.rfiItemId ? snap.infoRequests.find((x) => x.id === o.rfiItemId)?.number : undefined })),
+      };
+    },
+  }),
+
+  tool({
+    name: "update_guided_review",
+    kind: "write",
+    description:
+      "Change a workpaper's guided review (always a proposal for the user to accept): set an item's outcome (ok / flagged / na / none) and note, mark it done / not done by the preparer, raise a review point from an item (owned by the preparer unless `assignee` is given), add a check for next time (saved as a procedure on the workstep), or start the review. Item keys come from get_guided_review. Set reminders with create_task.",
+    input: z.object({
+      workpaper: z.string().describe("Workpaper id, ref or title"),
+      engagement: z.string().optional(),
+      start: z.boolean().optional().describe("Start the guided review"),
+      answers: z
+        .array(
+          z.object({
+            key: z.string().describe("Item key from get_guided_review, e.g. 'basic:0', 'step:<id>', 'check:<stepId>:<checkId>'"),
+            outcome: z.enum(["none", "ok", "flagged", "na"]).optional(),
+            note: z.string().optional(),
+            preparer: z.enum(["done", "not_done", "clear"]).optional(),
+          }),
+        )
+        .optional(),
+      raisePoints: z.array(z.object({ key: z.string(), text: z.string().optional().describe("Point text; default: the item and its note"), assignee: z.string().optional() })).optional(),
+      checksForNextTime: z.array(z.object({ text: z.string(), why: z.string().optional(), step: z.string().optional().describe("Step number or id; default the first linked step") })).optional(),
+    }),
+    async run(ctx, i) {
+      const w = await findWorkpaper(ctx, i.workpaper, i.engagement);
+      const snap = await loadSnapshot(ctx.store);
+      const settings = await ctx.store.getSettings();
+      const r = scopedReview(snap, w, settings);
+      const items = new Map([...r.basics, ...r.steps.flatMap((s) => s.items)].map((x) => [x.key, x]));
+      const get = (key: string) => {
+        const it = items.get(key);
+        if (!it) throw new Error(`No review item "${key}" on ${w.ref}. Get the keys from get_guided_review.`);
+        return it;
+      };
+      if (i.start) await startGuidedReview(ctx, w.id);
+      for (const a of i.answers ?? []) {
+        const it = get(a.key);
+        await answerReviewItem(ctx, w.id, a.key, { answer: a.outcome, note: a.note, prep: a.preparer === "clear" ? null : a.preparer, itemText: it.kind === "step" ? `Step: ${it.text}` : it.text, stepId: it.stepId });
+      }
+      const raised = [];
+      for (const p of i.raisePoints ?? []) {
+        const it = get(p.key);
+        const res = await answerReviewItem(ctx, w.id, p.key, { answer: "flagged", itemText: it.text, stepId: it.stepId, pointText: p.text });
+        if (res.point && p.assignee !== undefined) {
+          const cur = (await ctx.store.get("workpapers", w.id))!;
+          await update(ctx, "reviewPoints", res.point.id, { assignedToId: (await pointAssignee(ctx, p.assignee, cur)) ?? null } as never);
+        }
+        if (res.point) raised.push(res.point.text);
+      }
+      const added = [];
+      const linked = stepsOf(w.id, (await ctx.store.list("planItems")).filter((s) => !s.deleted));
+      for (const c of i.checksForNextTime ?? []) {
+        const step = c.step ? await findStep(ctx, c.step, w.engagementId) : linked[0];
+        if (!step) throw new Error(`${w.ref} covers no workstep: link one first (link_workpaper), then add checks for next time.`);
+        await addCheckForNextTime(ctx, step.id, c.text, c.why, w);
+        added.push(`${step.number} ${c.text}`.trim());
+      }
+      const after = scopedReview(await loadSnapshot(ctx.store), (await ctx.store.get("workpapers", w.id))!, settings);
+      return { workpaper: w.ref, progress: `${after.answered}/${after.total} answered`, raised, checksForNextTime: added };
+    },
+  }),
+
+  tool({
+    name: "batch",
+    kind: "write",
+    description:
+      "Several changes in one call, accepted by the user together as one proposal: e.g. create a task and then update it, or add steps and create the workpaper that covers them. Each call names a write tool and its input. Give a call `as: \"t1\"` and later inputs can use \"$t1\" wherever an id is expected, for the record that call created (it doesn't exist until the user accepts).",
+    input: z.object({
+      calls: z
+        .array(z.object({ tool: z.string(), input: z.record(z.string(), z.unknown()), as: z.string().regex(/^[A-Za-z]\w*$/).optional() }))
+        .min(1)
+        .max(25),
+    }),
+    async run(ctx, { calls }) {
+      const ids = new Map<string, string>();
+      const sub = (v: unknown): unknown =>
+        typeof v === "string" ? v.replace(/\$([A-Za-z]\w*)/g, (m, k: string) => ids.get(k) ?? m) : Array.isArray(v) ? v.map(sub) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, sub(x)])) : v;
+      const out = [];
+      for (const [n, c] of calls.entries()) {
+        const def = registry.find((t) => t.name === c.tool);
+        if (!def) throw new Error(`Call ${n + 1}: unknown tool ${c.tool}.`);
+        if (def.kind !== "write" || def.name === "batch" || def.name === "undo_last") throw new Error(`Call ${n + 1}: ${c.tool} can't go in a batch (only write tools; deletes need their own confirmation).`);
+        const parsed = def.input.safeParse(sub(c.input));
+        if (!parsed.success) throw new Error(`Call ${n + 1} (${c.tool}): ${parsed.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`);
+        const result = (await def.run(ctx, parsed.data)) as Record<string, unknown>;
+        const id = createdId(result);
+        if (c.as && id) ids.set(c.as, id);
+        out.push({ tool: c.tool, ...(c.as ? { as: c.as } : {}), id, result });
+      }
+      return { calls: out.length, results: out };
     },
   }),
 
@@ -1071,6 +1647,17 @@ export const tools = [
 ] as const satisfies readonly ToolDef<z.ZodType>[];
 
 export type ToolName = (typeof tools)[number]["name"];
+
+/** The tools by name for batch (set after the list, so the list can refer to itself). */
+let registry: readonly ToolDef[] = [];
+registry = tools as unknown as readonly ToolDef[];
+
+/** The id of the record a tool call created (for batch's "$name" references). */
+function createdId(r: Record<string, unknown> | undefined): string | undefined {
+  if (!r) return undefined;
+  const pick = (x: unknown) => (x && typeof x === "object" && typeof (x as { id?: unknown }).id === "string" ? (x as { id: string }).id : undefined);
+  return pick(r.created) ?? pick(r.updated) ?? (Array.isArray(r.ids) ? (r.ids[0] as string) : undefined) ?? (Array.isArray(r.steps) ? pick(r.steps[0]) : undefined) ?? pick(r);
+}
 
 export interface ToolCallResult {
   ok: boolean;

@@ -38,10 +38,13 @@ export function nextChaseDate(
   return addWorkingDays(base, CHASE_DAYS[criticalityOf(item)], { workingDays: CLIENT_WEEK, holidays: settings.holidays });
 }
 
-/** Open items whose stored chase date differs from the cadence. */
+/**
+ * Open items whose stored chase date differs from the cadence. Items with no
+ * contact are included, so their date is right once someone is assigned.
+ */
 export function chaseResets(items: InfoRequest[], settings: Pick<Settings, "holidays">, engagementId?: string) {
   return items
-    .filter((r) => chaseOpen(r) && hasContact(r) && (!engagementId || r.engagementId === engagementId))
+    .filter((r) => chaseOpen(r) && (!engagementId || r.engagementId === engagementId))
     .map((r) => ({ item: r, next: nextChaseDate(r, settings) }))
     .filter((x) => x.item.nextChaseOn !== x.next);
 }
@@ -52,5 +55,22 @@ export async function resetChaseDates(ctx: Ctx, engagementId?: string) {
   const all = await ctx.store.list("infoRequests");
   const out = [];
   for (const { item, next } of chaseResets(all, settings, engagementId)) out.push(await update(ctx, "infoRequests", item.id, { nextChaseOn: next }));
+  return out;
+}
+
+/** Open items with nobody to chase (no contact, no person responsible), optionally on one engagement. */
+export const withoutContact = (items: InfoRequest[], engagementId?: string) => items.filter((r) => chaseOpen(r) && !hasContact(r) && (!engagementId || r.engagementId === engagementId));
+
+/** Sets who to chase on many items at once: a client contact, or a name as the client's person responsible. */
+export async function assignContact(ctx: Ctx, ids: string[], who: { personId?: string; responsible?: string }) {
+  if (!who.personId && !who.responsible?.trim()) throw new Error("Pick a contact or type a name.");
+  const out = [];
+  for (const id of ids) out.push(await update(ctx, "infoRequests", id, who.personId ? { requestedFromId: who.personId } : { responsible: who.responsible!.trim() }));
+  // A client contact with no engagements yet now belongs to these items' engagement(s).
+  if (who.personId) {
+    const p = await ctx.store.get("people", who.personId);
+    const engs = [...new Set(out.map((r) => r.record.engagementId))];
+    if (p && !p.deleted && p.role === "client" && !p.engagementIds?.length) out.push((await update(ctx, "people", p.id, { engagementIds: engs })) as never);
+  }
   return out;
 }

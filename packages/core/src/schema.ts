@@ -28,6 +28,8 @@ export const personFields = z.object({
   email: z.string().optional(),
   phone: z.string().optional(),
   notes: z.string().optional(),
+  /** Client contacts: the engagements they belong to (a task or chase on another engagement warns). */
+  engagementIds: z.array(z.string()).optional(),
 });
 
 // ---------- Engagements ----------
@@ -111,6 +113,10 @@ export const taskFields = z.object({
   assigneeId: z.string().optional(),
   notes: z.string().optional(),
   completedAt: isoDateTime.optional(),
+  /** Days this open task has been carried forward to a later day (shown as "carried ×n"). */
+  carried: z.number().int().min(0).optional(),
+  /** The date it was first due, before any carry-forward. */
+  firstDue: isoDate.optional(),
 });
 
 // ---------- Work papers ----------
@@ -139,6 +145,47 @@ export const workpaperFields = z.object({
   finalAt: isoDateTime.optional(),
   /** Work-programme area this WP covers (e.g. "receivables"); drives the review checklist. */
   area: z.string().optional(),
+  /**
+   * What's still to do on the WP (e.g. "UK entity values to be updated"), each
+   * optionally waiting on an RFI item. A WP can be prepared with open items.
+   */
+  openItems: z
+    .array(
+      z.object({
+        id: z.string(),
+        text: z.string().trim().min(1),
+        rfiItemId: z.string().optional(),
+        resolved: z.boolean().default(false),
+        note: z.string().optional(),
+        /** Set when the reviewer has seen that the RFI item came in ("Inputs now in – re-review" dismissed). */
+        rereviewSeenAt: isoDateTime.optional(),
+      }),
+    )
+    .optional(),
+  /** Created on purpose without a workstep (ad-hoc); listed under "Unlinked workpapers" either way. */
+  adHoc: z.boolean().optional(),
+  /** Position in the To review list (drag order); unset = by due date. */
+  reviewOrder: z.number().optional(),
+  /**
+   * Guided review answers for everything except firm-library items (those
+   * stay on the device): basics, the step, its checks, procedures, inputs.
+   */
+  reviewAnswers: z
+    .array(
+      z.object({
+        key: z.string(),
+        answer: z.enum(["none", "ok", "flagged", "na"]).default("none"),
+        note: z.string().optional(),
+        /** The preparer's mark on the same item. */
+        prep: z.enum(["done", "not_done"]).optional(),
+        /** Review point raised from this item (⚑). */
+        pointId: z.string().optional(),
+        at: isoDateTime,
+      }),
+    )
+    .optional(),
+  /** When a guided review of this workpaper started. */
+  reviewStartedAt: isoDateTime.optional(),
 });
 
 // ---------- Review points ----------
@@ -260,6 +307,17 @@ export const trialBalanceFields = z.object({
 
 // ---------- Work plans (imported audit programme / IA plan) ----------
 export const planStatuses = ["open", "wip", "review", "closed"] as const;
+export const stepSources = ["work_plan_import", "tb_suggested", "manual", "ai"] as const;
+
+// ---------- Programmes (one per work plan area per engagement) ----------
+export const programmeFields = z.object({
+  engagementId: z.string(),
+  /** The work plan's area text as imported ("Sales", "TB Review"); renamable. */
+  name: z.string().trim().min(1),
+  /** TB area it maps to (revenue, receivables…), only for showing balances; process areas have none. */
+  tbArea: z.string().optional(),
+  order: z.number().default(0),
+});
 export const planReviewStatuses = ["open", "wip", "closed"] as const;
 export const planItemFields = z.object({
   engagementId: z.string(),
@@ -307,6 +365,27 @@ export const planItemFields = z.object({
       suggestedBy: z.enum(["ai", "matcher"]).optional(),
     })
     .optional(),
+  /** The programme (area) this workstep sits under. */
+  programmeId: z.string().optional(),
+  /** The workpaper that covers this step; the step's status comes from it. Many steps may share one. */
+  workpaperId: z.string().optional(),
+  /** Optional checklist under the step. */
+  procedures: z
+    .array(
+      z.object({
+        id: z.string(),
+        text: z.string().trim().min(1),
+        why: z.string().optional(),
+        done: z.boolean().default(false),
+        /** Added as a "check for next time" while reviewing this workpaper (its ref). */
+        addedFromReview: z.string().optional(),
+      }),
+    )
+    .optional(),
+  /** Where the step came from. Unset = an imported work plan row. */
+  source: z.enum(stepSources).optional(),
+  /** Steps made from a work-programme item: the item it came from. */
+  fromProgramItemId: z.string().optional(),
 });
 
 export const programItemStatuses = ["todo", "in_progress", "done", "na"] as const;
@@ -332,6 +411,24 @@ export const programItemFields = z.object({
   review: z.enum(reviewOutcomes).default("none"),
   reviewNote: z.string().optional(),
   order: z.number().default(0),
+  /** Superseded: the workstep this item became (kept read-only for the legacy view). */
+  migratedToId: z.string().optional(),
+});
+
+// ---------- Review checks per step text (firm level, A8) ----------
+/** The checks a reviewer kept for a workstep, saved by its text so every workpaper / engagement with the step gets them. */
+export const checkSetFields = z.object({
+  /** Normalised step text (see stepKey). */
+  key: z.string(),
+  stepText: z.string(),
+  checks: z.array(
+    z.object({
+      id: z.string(),
+      text: z.string().trim().min(1),
+      why: z.string().optional(),
+      source: z.enum(["step", "history", "ai", "manual"]).default("manual"),
+    }),
+  ),
 });
 
 // ---------- Time ----------
@@ -391,6 +488,39 @@ export const proposalFields = z.object({
   reason: z.string().optional(),
   /** Same tool + input from the same source, so a retried call doesn't queue a duplicate. */
   opKey: z.string().optional(),
+  /**
+   * Optional parts the user ticks or unticks before accepting (e.g. each
+   * suggested step ↔ workpaper link). Applied after `changes`, field by field,
+   * in the same undo batch.
+   */
+  choices: z
+    .array(
+      z.object({
+        key: z.string(),
+        /** Groups choices in the Inbox ("Links", "Owners"…). */
+        group: z.string().default(""),
+        label: z.string(),
+        detail: z.string().optional(),
+        defaultOn: z.boolean().default(true),
+        /** Other choices this one only makes sense with (e.g. renaming a ref needs the link). */
+        requires: z.array(z.string()).optional(),
+        /** Choices that can't go with this one (e.g. "move" and "delete" the same records). */
+        excludes: z.array(z.string()).optional(),
+        patches: z.array(
+          z.object({
+            table: z.string(),
+            recordId: z.string(),
+            action: z.enum(["create", "update"]),
+            /** For updates: the values of `set`'s fields when proposed (to detect changes since). */
+            before: z.record(z.string(), z.unknown()).nullable(),
+            set: z.record(z.string(), z.unknown()),
+          }),
+        ),
+      }),
+    )
+    .optional(),
+  /** Choice keys the user accepted. */
+  chosen: z.array(z.string()).optional(),
 });
 
 export const fieldSchemas = {
@@ -409,6 +539,8 @@ export const fieldSchemas = {
   trialBalances: trialBalanceFields,
   programItems: programItemFields,
   planItems: planItemFields,
+  programmes: programmeFields,
+  checkSets: checkSetFields,
   proposals: proposalFields,
 } as const;
 
@@ -431,6 +563,8 @@ export const entitySchemas = {
   trialBalances: trialBalanceFields.extend(base),
   programItems: programItemFields.extend(base),
   planItems: planItemFields.extend(base),
+  programmes: programmeFields.extend(base),
+  checkSets: checkSetFields.extend(base),
   proposals: proposalFields.extend(base),
 } as const;
 
@@ -455,6 +589,10 @@ export type TrialBalance = EntityMap["trialBalances"];
 export type TbLine = TrialBalance["lines"][number];
 export type ProgramItem = EntityMap["programItems"];
 export type PlanItem = EntityMap["planItems"];
+export type Programme = EntityMap["programmes"];
+export type CheckSet = EntityMap["checkSets"];
+export type OpenItem = NonNullable<WorkPaper["openItems"]>[number];
+export type StepProcedure = NonNullable<PlanItem["procedures"]>[number];
 export type Proposal = EntityMap["proposals"];
 
 /** Tables holding the user's work (excludes system-written gamification state). */
@@ -470,6 +608,8 @@ export const workTables = [
   "timeEntries",
   "programItems",
   "planItems",
+  "programmes",
+  "checkSets",
 ] as const satisfies readonly TableName[];
 
 /** One entry per record change; powers Undo (and later, points). */
@@ -525,6 +665,8 @@ export const settingsSchema = z.object({
   groupNames: z.array(z.string()).default([]),
   /** AI changes that apply without waiting in the Inbox (everything else is proposed). */
   autoApply: z.array(z.enum(["taskDates", "chaseLogs"])).default(["taskDates", "chaseLogs"]),
+  /** The firm-wide basics every guided review starts with (brief v2 A8, decision 8.8). */
+  reviewBasics: z.array(z.string()).default(["Period covered", "Figures agree to BoA / TB", "Sources and RFI items referenced", "Casting and formulas checked", "Conclusion and open items written"]),
 });
 
 /** Settings that follow the user across devices; the rest (theme, Google setup…) stay per device. */
@@ -543,6 +685,7 @@ export const syncedSettingsKeys = [
   "autoApply",
   "myAliases",
   "groupNames",
+  "reviewBasics",
 ] as const satisfies readonly (keyof z.output<typeof settingsSchema>)[];
 export type Settings = z.output<typeof settingsSchema>;
 export const defaultSettings = (): Settings => settingsSchema.parse({});
