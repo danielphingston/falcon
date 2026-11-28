@@ -532,31 +532,45 @@ export const tools = [
   tool({
     name: "update_review_point",
     kind: "write",
-    description: "Mark a review point addressed or cleared (or reopen it), reassign it, set its due date or link it to a work plan step.",
+    description: "Mark a review point addressed or cleared (or reopen it), reassign it (change its owner), set its due date or link it to a workstep. Pass `ids` to make the same change to several points at once (e.g. give every open point on a work paper to one person).",
     input: z.object({
-      id: z.string(),
+      id: z.string().optional().describe("One review point"),
+      ids: z.array(z.string()).optional().describe("Several review points, same change"),
       status: z.enum(reviewPointStatuses).optional(),
       assignedTo: z.string().optional().describe("Who must address it ('me' for me; the preparer's name puts it back with the preparer)"),
       due: z.union([dateArg, z.literal("")]).optional().describe("YYYY-MM-DD, or empty to clear"),
       step: z.string().optional().describe("Work plan step number or id; empty to unlink"),
     }),
-    async run(ctx, { id, status, assignedTo, due, step }) {
-      const point = await ctx.store.get("reviewPoints", id);
-      if (!point || point.deleted) throw new Error(`No review point ${id}`);
-      const wp = await ctx.store.get("workpapers", point.workpaperId);
-      const patch: Record<string, unknown> = {};
-      if (status) {
-        patch.status = status;
-        patch.clearedAt = status === "cleared" ? (ctx.now?.() ?? new Date()).toISOString() : null;
+    async run(ctx, { id, ids, status, assignedTo, due, step }) {
+      const all = [...new Set([...(id ? [id] : []), ...(ids ?? [])])];
+      if (!all.length) throw new Error("Pass id (or ids) of the review point(s).");
+      const out = [];
+      const warnings: string[] = [];
+      for (const pid of all) {
+        const point = await ctx.store.get("reviewPoints", pid);
+        if (!point || point.deleted) throw new Error(`No review point ${pid}`);
+        const wp = await ctx.store.get("workpapers", point.workpaperId);
+        const patch: Record<string, unknown> = {};
+        if (status) {
+          patch.status = status;
+          patch.clearedAt = status === "cleared" ? (ctx.now?.() ?? new Date()).toISOString() : null;
+        }
+        if (assignedTo !== undefined) patch.assignedToId = (await pointAssignee(ctx, assignedTo, wp ?? { myRole: "preparer" })) ?? null;
+        if (due !== undefined) patch.due = due || null;
+        if (step !== undefined) patch.planItemId = step ? (await resolveStep(ctx.store, point.engagementId, step)).id : null;
+        const r = await update(ctx, "reviewPoints", pid, patch as never);
+        out.push(r.record);
+        // Reopening or reassigning a point on a final work paper sends it back to points raised.
+        const cur = wp ? await ctx.store.get("workpapers", wp.id) : undefined;
+        if (cur && !cur.deleted && cur.status === "final" && (assignedTo !== undefined || status === "open")) {
+          await update(ctx, "workpapers", cur.id, { status: "points_raised" });
+          warnings.push(`Work paper ${cur.ref} was final; it's back to points raised.`);
+        }
       }
-      if (assignedTo !== undefined) patch.assignedToId = (await pointAssignee(ctx, assignedTo, wp ?? { myRole: "preparer" })) ?? null;
-      if (due !== undefined) patch.due = due || null;
-      if (step !== undefined) patch.planItemId = step ? (await resolveStep(ctx.store, point.engagementId, step)).id : null;
-      const r = await update(ctx, "reviewPoints", id, patch as never);
-      // Reopening or reassigning a point on a final work paper sends it back to points raised.
-      const reopened = wp && !wp.deleted && wp.status === "final" && (assignedTo !== undefined || status === "open");
-      if (reopened) await update(ctx, "workpapers", wp.id, { status: "points_raised" });
-      return { updated: brief("reviewPoints", r.record), ...(reopened ? { warning: `Work paper ${wp.ref} was final; it's back to points raised.` } : {}) };
+      return {
+        ...(out.length === 1 ? { updated: brief("reviewPoints", out[0]) } : { updated: out.length, points: out.map((r) => ({ id: r.id, text: r.text.split("\n")[0].slice(0, 80), status: r.status, assignedToId: r.assignedToId })) }),
+        ...(warnings.length ? { warning: [...new Set(warnings)].join(" ") } : {}),
+      };
     },
   }),
 
@@ -586,15 +600,44 @@ export const tools = [
   tool({
     name: "update_irl_item",
     kind: "write",
-    description: "Update an IRL item: mark received/partial/na, change due date or add notes.",
+    description:
+      "Update an RFI / IRL item: mark received / partial / na, change the due date, add our notes, set who to chase, mark whether it is the books (TB / GL / accounting backup), or set / clear its imported columns (e.g. \"Remarks (Firm)\") with `fields`: an empty value clears that column.",
     input: z.object({
       id: z.string(),
       status: z.enum(irlStatuses).optional(),
       due: optDate,
       notes: z.string().optional(),
+      requestedFrom: z.string().optional().describe("Client contact to chase ('' to clear)"),
+      responsible: z.string().optional().describe("Client's person responsible as a name, when not a contact ('' to clear)"),
+      books: z.boolean().nullable().optional().describe("true / false to mark whether this item is the books; null to go back to the automatic guess"),
+      fields: z
+        .array(z.object({ label: z.string().describe("Column header as imported, e.g. 'Remarks (Firm)'"), value: z.string().describe("New value; empty clears it") }))
+        .optional(),
     }),
-    async run(ctx, { id, ...patch }) {
-      return { updated: brief("infoRequests", (await update(ctx, "infoRequests", id, patch)).record) };
+    async run(ctx, { id, fields, requestedFrom, responsible, books, ...patch }) {
+      const item = await ctx.store.get("infoRequests", id);
+      if (!item || item.deleted) throw new Error(`No RFI item ${id}`);
+      const p: Record<string, unknown> = { ...patch };
+      if (requestedFrom !== undefined) p.requestedFromId = requestedFrom ? ((await resolvePerson(ctx, requestedFrom, "client"))?.id ?? null) : null;
+      if (responsible !== undefined) p.responsible = responsible || null;
+      if (books !== undefined) p.books = books;
+      if (fields) {
+        let cur = [...(item.fields ?? [])];
+        const unknown: string[] = [];
+        for (const f of fields) {
+          const i = cur.findIndex((x) => norm(x.label) === norm(f.label));
+          const j = i >= 0 ? i : cur.findIndex((x) => norm(x.label).includes(norm(f.label)));
+          if (j < 0) {
+            if (f.value.trim()) cur.push({ label: f.label.trim(), value: f.value });
+            else unknown.push(f.label);
+            continue;
+          }
+          cur = f.value.trim() ? cur.map((x, k) => (k === j ? { ...x, value: f.value } : x)) : cur.filter((_, k) => k !== j);
+        }
+        if (unknown.length) throw new Error(`No imported column ${unknown.map((u) => `"${u}"`).join(", ")} on this item. Columns: ${(item.fields ?? []).map((x) => x.label).join(", ") || "none"}.`);
+        p.fields = cur.length ? cur : null;
+      }
+      return { updated: brief("infoRequests", (await update(ctx, "infoRequests", id, p as never)).record) };
     },
   }),
 
