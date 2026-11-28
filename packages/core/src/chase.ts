@@ -66,5 +66,11 @@ export async function assignContact(ctx: Ctx, ids: string[], who: { personId?: s
   if (!who.personId && !who.responsible?.trim()) throw new Error("Pick a contact or type a name.");
   const out = [];
   for (const id of ids) out.push(await update(ctx, "infoRequests", id, who.personId ? { requestedFromId: who.personId } : { responsible: who.responsible!.trim() }));
+  // A client contact with no engagements yet now belongs to these items' engagement(s).
+  if (who.personId) {
+    const p = await ctx.store.get("people", who.personId);
+    const engs = [...new Set(out.map((r) => r.record.engagementId))];
+    if (p && !p.deleted && p.role === "client" && !p.engagementIds?.length) out.push((await update(ctx, "people", p.id, { engagementIds: engs })) as never);
+  }
   return out;
 }

@@ -224,6 +224,7 @@ function Extras({ table, record }: { table: TableName; record: AnyEntity }) {
       {table === "infoRequests" && <RfiDetails item={record as EntityMap["infoRequests"]} />}
       {table === "infoRequests" && <BooksToggle item={record as EntityMap["infoRequests"]} />}
       {table === "infoRequests" && <RfiFeeds item={record as EntityMap["infoRequests"]} />}
+      {table === "people" && (record as EntityMap["people"]).role === "client" && <ContactEngagements person={record as EntityMap["people"]} />}
       {table === "people" && (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold">Also written as</h3>
@@ -258,6 +259,30 @@ function Extras({ table, record }: { table: TableName; record: AnyEntity }) {
           <Icon name="bell" size={16} /> Remind me
         </button>
       )}
+    </div>
+  );
+}
+
+/** The engagements a client contact belongs to (brief v2 C5): tasks or chases elsewhere warn. */
+function ContactEngagements({ person }: { person: EntityMap["people"] }) {
+  const snap = useSnapshot();
+  const ids = person.engagementIds ?? [];
+  const engs = (snap?.engagements ?? []).filter((e) => e.status !== "closed" || ids.includes(e.id)).sort((a, b) => a.name.localeCompare(b.name));
+  const toggle = (id: string) => {
+    const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
+    void act("Engagements updated", (ctx) => update(ctx, "people", person.id, { engagementIds: next.length ? next : null }));
+  };
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold">Engagements</h3>
+      <p className="text-xs muted">The client engagements this contact belongs to. A task or chase on another engagement that names them shows a warning.</p>
+      <div className="flex flex-wrap gap-1.5">
+        {engs.map((e) => (
+          <button key={e.id} onClick={() => toggle(e.id)} className={`rounded-full border px-2.5 py-1 text-xs ${ids.includes(e.id) ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--border)]"}`}>
+            {e.name}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

@@ -172,7 +172,7 @@ export function scopedReview(snap: Pick<Snapshot, "planItems" | "checkSets" | "i
   const basics = (settings.reviewBasics?.length ? settings.reviewBasics : DEFAULT_BASICS).map((t, i) => item({ key: `basic:${i}`, kind: "basic", text: t, source: "basics" }));
   const steps = stepsOf(wp.id, snap.planItems).map((s) => {
     const set = checkSetFor(s, snap.checkSets);
-    const items: ReviewItem[] = [item({ key: `step:${s.id}`, kind: "step", text: `${s.number ? `${s.number} ` : ""}${shortTitle(s.text)}`, why: s.text.includes("\n") || s.text.length > 70 ? s.text : undefined, source: "workstep", stepId: s.id })];
+    const items: ReviewItem[] = [item({ key: `step:${s.id}`, kind: "step", text: shortTitle(s.text), why: s.text.includes("\n") || s.text.length > 70 ? s.text : undefined, source: "workstep", stepId: s.id })];
     for (const c of set?.checks ?? []) items.push(item({ key: `check:${s.id}:${c.id}`, kind: "check", text: c.text, why: c.why, source: c.source, stepId: s.id }));
     for (const p of s.procedures ?? []) items.push(item({ key: `proc:${s.id}:${p.id}`, kind: "procedure", text: p.text.split("\n")[0], why: p.why, source: "procedure", stepId: s.id }));
     if (s.inputs?.source === "manual" && !s.inputs.none)

@@ -64,6 +64,11 @@ const calls: Record<string, (ids: Ids) => unknown> = {
   set_step_inputs: () => ({ engagement: "falcon", steps: [{ step: "1.1", rfi: ["1.1"], notOnRfi: ["GSTR-2B"] }] }),
   add_point_challenges: (i) => ({ pointId: i.point, questions: [{ question: "Have you agreed the TB to the FS?", why: "Completeness" }] }),
   update_plan_step: (i) => ({ id: i.step, status: "wip", assignee: "Mira", notes: "Done" }),
+  update_step: (i) => ({ step: i.step, owner: "Mira", notes: "Done", addProcedures: [{ text: "Agree to TB", why: "Completeness" }] }),
+  add_steps: () => ({ engagement: "falcon", programme: "Revenue", steps: [{ text: "Revenue to collections", owner: "Mira", procedures: [{ text: "Map receipts to invoices" }] }] }),
+  link_workpaper: () => ({ workpaper: "B.2", engagement: "falcon", link: ["1.1"] }),
+  update_guided_review: () => ({ workpaper: "B.2", engagement: "falcon", start: true, answers: [{ key: "basic:0", outcome: "ok" }, { key: "basic:1", outcome: "flagged", note: "TB not tied" }] }),
+  batch: () => ({ calls: [{ tool: "create_task", input: { title: "Call client", engagement: "falcon" }, as: "t" }, { tool: "update_task", input: { id: "$t", status: "done" } }] }),
   delete_item: (i) => ({ id: i.task, confirmed: true }),
 };
 
