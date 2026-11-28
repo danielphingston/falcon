@@ -32,6 +32,7 @@ import { AliasEditor } from "./AliasEditor";
 import { Checkbox, Pill, Sheet, statusTone } from "./ui";
 import { ReviewChecklist } from "./ReviewChecklist";
 import { ReviewPointsPanel } from "./ReviewPoints";
+import { OpenItemsPanel } from "./OpenItems";
 import { openStepLinks, openWorkpaperForm } from "./WorkpaperForm";
 import { changeStep, markStepNa } from "../lib/chain";
 
@@ -215,6 +216,7 @@ function Extras({ table, record }: { table: TableName; record: AnyEntity }) {
   return (
     <div className="mt-5 space-y-5">
       {table === "workpapers" && <WorkpaperSteps wp={record as EntityMap["workpapers"]} />}
+      {table === "workpapers" && <OpenItemsPanel wp={record as EntityMap["workpapers"]} />}
       {table === "workpapers" && <ReviewChecklist wp={record as EntityMap["workpapers"]} />}
       {table === "workpapers" && <ReviewPointsPanel wp={record as EntityMap["workpapers"]} />}
       {table === "infoRequests" && <RfiDetails item={record as EntityMap["infoRequests"]} />}

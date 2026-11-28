@@ -284,3 +284,66 @@ describe("creating a workpaper for steps (A3)", () => {
     expect((await s.store.get("planItems", s.steps.s41.id))?.workpaperId).toBeUndefined();
   });
 });
+
+describe("open items and re-review (A5)", () => {
+  it("flags the workpaper on Today when a linked RFI item comes in, until marked re-reviewed", async () => {
+    const { computeToday, rereviewFlags, runTool } = await import("../src");
+    const s = await seed();
+    const rfi = (await create(s.ctx, "infoRequests", { engagementId: s.eng.id, number: "5.1", description: "Bank statements", requestedOn: "2026-11-20" })).record;
+    // Through the AI tool: add the open item (applied here as the app, to test the flow).
+    const r = await runTool({ store: s.store, by: "app", now: () => NOW }, "update_workpaper", { workpaper: s.wps.cn.id, addOpenItems: [{ text: "Tracing pending – statements", rfi: "5.1" }] });
+    expect(r.ok).toBe(true);
+    let snap = await loadSnapshot(s.store);
+    expect(rereviewFlags(snap)).toEqual([]);
+    await update(s.ctx, "infoRequests", rfi.id, { status: "received" });
+    snap = await loadSnapshot(s.store);
+    const v = computeToday(snap, "2026-11-28");
+    expect(v.rereview.map((x) => x.wp.id)).toEqual([s.wps.cn.id]);
+    expect(v.toReview.map((w) => w.id)).toContain(s.wps.cn.id);
+    // Marked re-reviewed: the flag goes.
+    const wp = (await s.store.get("workpapers", s.wps.cn.id))!;
+    await update(s.ctx, "workpapers", wp.id, { openItems: wp.openItems!.map((o) => ({ ...o, rereviewSeenAt: new Date(NOW.getTime() + 1000).toISOString() })) });
+    expect(rereviewFlags(await loadSnapshot(s.store))).toEqual([]);
+  });
+
+  it("resolves open items whose RFI item became N/A (edge case 9)", async () => {
+    const { resolveNaOpenItems } = await import("../src");
+    const s = await seed();
+    const rfi = (await create(s.ctx, "infoRequests", { engagementId: s.eng.id, number: "5.2", description: "FD confirmations", requestedOn: "2026-11-20", status: "na" })).record;
+    await update(s.ctx, "workpapers", s.wps.mis.id, { openItems: [{ id: "o1", text: "FD confirmations pending", rfiItemId: rfi.id, resolved: false }] });
+    await resolveNaOpenItems(s.ctx);
+    expect((await s.store.get("workpapers", s.wps.mis.id))?.openItems?.[0]).toMatchObject({ resolved: true, note: "RFI marked N/A" });
+  });
+});
+
+describe("workpaper tools for the AI (C2)", () => {
+  it("create_workpaper without steps returns the unlinked steps instead of creating", async () => {
+    const { runTool } = await import("../src");
+    const s = await seed();
+    const r = await runTool({ store: s.store, by: "connector", propose: true }, "create_workpaper", { engagement: "kestrel", title: "Payroll" });
+    expect(r.ok).toBe(true);
+    expect(r.proposalId).toBeUndefined();
+    const out = r.result as { created: boolean; unlinkedSteps: { number: string }[] };
+    expect(out.created).toBe(false);
+    expect(out.unlinkedSteps.map((x) => x.number)).toContain("4.3");
+  });
+
+  it("create_workpaper with steps links them and fills defaults; notes and open items too", async () => {
+    const { runTool } = await import("../src");
+    const s = await seed();
+    const r = await runTool({ store: s.store, by: "app" }, "create_workpaper", { engagement: "kestrel", steps: ["4.3"], notes: "Books side done", openItems: [{ text: "Zoho export pending" }] });
+    expect(r.ok).toBe(true);
+    const wp = (r.result as { created: { id: string; ref: string; title: string; preparerId: string; notes: string; openItems: unknown[] } }).created;
+    expect(wp).toMatchObject({ ref: "4.3", title: "Recomputation of revenue basis invoicing sheet", preparerId: s.people.asha.id, notes: "Books side done" });
+    expect(wp.openItems.length).toBe(1);
+    expect((await s.store.get("planItems", s.steps.s43.id))?.workpaperId).toBe(wp.id);
+  });
+});
+
+describe("review queue order (A7)", () => {
+  it("dragged order first, then due date", async () => {
+    const { reviewQueue } = await import("../src");
+    const w = (id: string, due?: string, reviewOrder?: number) => ({ id, ref: id, due, reviewOrder }) as never;
+    expect(reviewQueue([w("MIS", "2026-12-01"), w("CN", "2026-11-30"), w("R2C", undefined, 0), w("X")]).map((x: { id: string }) => x.id)).toEqual(["R2C", "CN", "MIS", "X"]);
+  });
+});

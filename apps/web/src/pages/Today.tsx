@@ -30,6 +30,7 @@ import { QuickAdd } from "../components/QuickAdd";
 import { FollowUpRow, IrlRow, ReviewPointRow, TaskRow, WorkpaperRow, useLookups } from "../components/rows";
 import { AnimatedList, EmptyState, Section } from "../components/ui";
 import { BulkAssign } from "../components/BulkAssign";
+import { ReviewQueue } from "../components/ReviewQueue";
 import { act } from "../lib/act";
 import { useSettings, useSnapshot, useTable, useToday } from "../lib/hooks";
 
@@ -152,11 +153,7 @@ export function TodayPage() {
       {v.toReview.length > 0 && (
         <motion.div variants={rise}>
           <Section title="Waiting for my review" count={v.toReview.length} icon="review">
-            <AnimatedList>
-              {v.toReview.map((w) => (
-                <WorkpaperRow key={w.id} wp={w} l={l} openPoints={openPoints(w.id)} />
-              ))}
-            </AnimatedList>
+            <ReviewQueue wps={v.toReview} rereview={new Set(v.rereview.map((x) => x.wp.id))} l={l} openPoints={openPoints} />
           </Section>
         </motion.div>
       )}

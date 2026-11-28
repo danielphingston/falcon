@@ -2,6 +2,7 @@ import type {
   Engagement,
   FollowUp,
   InfoRequest,
+  OpenItem,
   Person,
   ReviewPoint,
   Task,
@@ -40,7 +41,10 @@ export interface TodayView {
   chase: ChaseGroup[];
   /** RFI items due a chase that have nobody to chase (4.2): not counted as chases. */
   assignContact: InfoRequest[];
+  /** Workpapers waiting for my review, in my order (drag order, else due date); includes re-reviews. */
   toReview: WorkPaper[];
+  /** Workpapers whose open items' RFI inputs have come in since: "Inputs now in – re-review" (A5). */
+  rereview: { wp: WorkPaper; items: OpenItem[] }[];
   /** Steps that became ready or can-start since yesterday (RFI items received). */
   unlocked: { step: PlanItem; to: Readiness }[];
   /** Open review points I owe with no due date reached yet. */
@@ -50,7 +54,6 @@ export interface TodayView {
   doneToday: Task[];
 }
 
-/** An open untimed task from an earlier day: it carries forward to today (5.2). */
 /** An open untimed task from an earlier day, or one carried forward to today. */
 export const isCarried = (t: Task, today: string) => t.status !== "done" && !!t.due && !t.dueTime && (t.due < today || (!!t.carried && t.due === today));
 
@@ -126,12 +129,17 @@ export function computeToday(s: Snapshot, today: string, yesterday?: string): To
     groups.get(key)!.items.push(item);
   }
   const chase = [...groups.values()].sort((a, b) => b.items.length - a.items.length);
+  const rereview = rereviewFlags(s).filter((x) => inLive(x.wp.engagementId));
 
   return {
     overdue: due.filter((d) => d.due < today),
     dueToday: due.filter((d) => d.due === today),
     chase,
-    toReview: s.workpapers.filter((w) => w.myRole === "reviewer" && wpOpenForReview(w) && inLive(w.engagementId)),
+    toReview: reviewQueue([
+      ...s.workpapers.filter((w) => w.myRole === "reviewer" && wpOpenForReview(w) && inLive(w.engagementId)),
+      ...rereview.filter((x) => !wpOpenForReview(x.wp) || x.wp.myRole !== "reviewer").map((x) => x.wp),
+    ]),
+    rereview,
     assignContact,
     unlocked: yesterday ? unlockedSince(s, yesterday, today, live) : [],
     pointsToClear: s.reviewPoints.filter((p) => iOwe(p) && !(p.due && p.due <= today)),
@@ -169,6 +177,51 @@ export function unlockedSince(s: Snapshot, since: string, today: string, live = 
     const plan = s.planItems.filter((i) => i.engagementId === e.id && !i.deleted);
     const before = rfi.map((r) => (moved(r) ? { ...r, status: "pending" as const } : r));
     for (const u of unlockedSteps(e, plan, rfi, before, today)) out.push({ step: u.step, to: u.to });
+  }
+  return out;
+}
+
+/** The To review order (A7): dragged order first, then by due date, then ref. */
+export function reviewQueue(wps: WorkPaper[]): WorkPaper[] {
+  return [...new Map(wps.map((w) => [w.id, w])).values()].sort(
+    (a, b) =>
+      (a.reviewOrder ?? Infinity) - (b.reviewOrder ?? Infinity) ||
+      (a.due ?? "9999").localeCompare(b.due ?? "9999") ||
+      a.ref.localeCompare(b.ref, undefined, { numeric: true }),
+  );
+}
+
+/**
+ * Re-review flags (A5): open items still unresolved whose RFI item is now
+ * received, and the reviewer hasn't marked as re-reviewed since it came in.
+ */
+export function rereviewFlags(s: Pick<Snapshot, "workpapers" | "infoRequests">): { wp: WorkPaper; items: OpenItem[] }[] {
+  const rfi = new Map(s.infoRequests.filter((r) => !r.deleted).map((r) => [r.id, r]));
+  const out: { wp: WorkPaper; items: OpenItem[] }[] = [];
+  for (const wp of s.workpapers) {
+    if (wp.deleted || wp.status === "final") continue;
+    const items = (wp.openItems ?? []).filter((o) => {
+      if (o.resolved || !o.rfiItemId) return false;
+      const r = rfi.get(o.rfiItemId);
+      if (!r || r.status !== "received") return false;
+      return !o.rereviewSeenAt || (r.receivedAt ?? r.updatedAt) > o.rereviewSeenAt;
+    });
+    if (items.length) out.push({ wp, items });
+  }
+  return out;
+}
+
+/**
+ * Open items waiting on an RFI item that's been marked N/A are resolved,
+ * noted "RFI marked N/A" (edge case 9). Run as housekeeping; one batch.
+ */
+export async function resolveNaOpenItems(ctx: Ctx) {
+  const rfi = new Map((await ctx.store.list("infoRequests")).filter((r) => !r.deleted).map((r) => [r.id, r]));
+  const out = [];
+  for (const wp of await ctx.store.list("workpapers")) {
+    if (wp.deleted || !wp.openItems?.some((o) => !o.resolved && o.rfiItemId && rfi.get(o.rfiItemId)?.status === "na")) continue;
+    const openItems = wp.openItems.map((o) => (!o.resolved && o.rfiItemId && rfi.get(o.rfiItemId)?.status === "na" ? { ...o, resolved: true, note: [o.note, "RFI marked N/A"].filter(Boolean).join(" · ") } : o));
+    out.push(await update(ctx, "workpapers", wp.id, { openItems }));
   }
   return out;
 }

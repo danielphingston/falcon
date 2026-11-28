@@ -29,7 +29,7 @@ export function useLookups() {
   const workpapers = byId(useTable("workpapers"));
   return { people, engagements, workpapers };
 }
-type Lookups = ReturnType<typeof useLookups>;
+export type Lookups = ReturnType<typeof useLookups>;
 
 function Due({ due, done, time }: { due?: string; done?: boolean; time?: string }) {
   const today = useToday();
@@ -90,7 +90,7 @@ export function TaskRow({ task, l, hideEngagement, tag }: { task: Task; l: Looku
   );
 }
 
-export function WorkpaperRow({ wp, l, openPoints, hideEngagement }: { wp: WorkPaper; l: Lookups; openPoints?: number; hideEngagement?: boolean }) {
+export function WorkpaperRow({ wp, l, openPoints, hideEngagement, rereview }: { wp: WorkPaper; l: Lookups; openPoints?: number; hideEngagement?: boolean; rereview?: boolean }) {
   const done = wp.status === "final";
   return (
     <ListItem id={wp.id} onClick={() => openEditor({ table: "workpapers", id: wp.id })}>
@@ -101,6 +101,7 @@ export function WorkpaperRow({ wp, l, openPoints, hideEngagement }: { wp: WorkPa
           {!hideEngagement && <span>{engName(l, wp.engagementId)}</span>}
           <span>{wp.myRole === "reviewer" ? `I review${wp.preparerId ? ` · by ${personName(l, wp.preparerId)}` : ""}` : `I prepare${wp.reviewerId ? ` · rev. ${personName(l, wp.reviewerId)}` : ""}`}</span>
           {!!openPoints && <span className="font-semibold text-amber-600">{openPoints} open point{openPoints > 1 ? "s" : ""}</span>}
+          {rereview && <span className="font-semibold text-emerald-600">Inputs now in – re-review</span>}
           <Due due={wp.due} done={done || wp.status === "cleared"} />
         </Meta>
       </div>

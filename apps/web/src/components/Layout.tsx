@@ -18,7 +18,7 @@ import { ChatLauncher } from "./ChatDrawer";
 import { startAutoSync } from "../lib/sync";
 import { startBridge } from "../lib/bridge";
 import { warmGoogle } from "../lib/google";
-import { carryTasksForward, proposeChaseResets, proposeMissingMigrations } from "../lib/chain";
+import { carryTasksForward, proposeChaseResets, proposeMissingMigrations, tidyOpenItems } from "../lib/chain";
 import { Icon, type IconName } from "./Icon";
 import { TLink } from "./TLink";
 import { Toaster } from "./ui";
@@ -194,6 +194,7 @@ function useChainSetup() {
   // Each morning (and on the first open after days away): carry open tasks to today.
   useEffect(() => {
     void carryTasksForward(today).catch(() => undefined);
+    void tidyOpenItems().catch(() => undefined);
   }, [today]);
 }
 

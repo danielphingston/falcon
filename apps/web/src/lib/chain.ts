@@ -2,7 +2,7 @@
  * The app's side of the Programme → Workstep → Workpaper chain: queueing the
  * one-time set-up proposal per engagement (build brief v2 A1).
  */
-import { OverlayStore, StepCloseError, carryForward, chaseResets, newId, loadSnapshot, planMigration, proposeMigration, runTool, todayISO, updateStep, type Ctx, type PlanItem } from "@falcon/core";
+import { OverlayStore, StepCloseError, carryForward, chaseResets, newId, resolveNaOpenItems, loadSnapshot, planMigration, proposeMigration, runTool, todayISO, updateStep, type Ctx, type PlanItem } from "@falcon/core";
 import { act } from "./act";
 import { toast } from "./toast";
 import { getSettings, store } from "../db";
@@ -103,6 +103,12 @@ export async function proposeChaseResets(): Promise<number> {
   }
   if (n) scheduleSync();
   return n;
+}
+
+/** Open items waiting on RFI items marked N/A get resolved (edge case 9). */
+export async function tidyOpenItems() {
+  const r = await store.transaction(() => resolveNaOpenItems({ store, by: "app", batchId: newId() }));
+  if (r.length) scheduleSync();
 }
 
 /** Moves open untimed tasks from earlier days to today (once a day; undoable). */
