@@ -11,12 +11,13 @@
  *   each suggested link, owner change, ref change and new workpaper is a
  *   choice the user ticks in the Inbox. One undo batch.
  */
-import { newId, type Ctx } from "./actions";
+import { create, newId, update, type Ctx } from "./actions";
 import { inferAreas } from "./audit/reviewAssist";
 import { areaLabel } from "./audit/generate";
 import { cellIds, peopleIndex, ME } from "./people";
 import { propose, type Captured } from "./proposals";
 import { loadSnapshot, type Snapshot } from "./store";
+import { engagementReadiness, type Readiness } from "./readiness";
 import type { PlanItem, Programme, ProgramItem, Proposal, Settings, WorkPaper } from "./schema";
 import { wpStatuses } from "./schema";
 
@@ -510,4 +511,293 @@ export async function proposeMigration(ctx: Ctx, engagementId: string): Promise<
     choices: plan.choices,
     opKey: `migrate:${engagementId}`,
   });
+}
+
+// ---------- One view: programmes → steps → workpaper ----------
+
+export interface ChainStep {
+  step: PlanItem;
+  state: StepState;
+  wp?: WorkPaper;
+  /** RFI readiness of the step's inputs (open steps only). */
+  readiness?: Readiness;
+  /** RFI numbers the step's inputs point to (for search). */
+  rfiNumbers: string[];
+  /** The workpaper is prepared by someone other than the step's owner. */
+  preparerDiffers: boolean;
+  /** Closed in the imported plan, but no workpaper behind it. */
+  closedNoWp: boolean;
+}
+
+export interface ChainProgramme {
+  /** Programme id, or `area:<name>` for steps not yet under a programme. */
+  id: string;
+  programme?: Programme;
+  name: string;
+  tbArea?: string;
+  steps: ChainStep[];
+  applicable: number;
+  closed: number;
+}
+
+export interface ChainView {
+  programmes: ChainProgramme[];
+  /** Workpapers on the engagement that cover no step. */
+  unlinked: WorkPaper[];
+  /** Old programme items not yet moved in as steps. */
+  pendingItems: ProgramItem[];
+  /** Some steps aren't under a programme yet (set-up not accepted). */
+  needsSetup: boolean;
+}
+
+export interface ChainFilter {
+  /** Person id or ME: step owner, or preparer / reviewer of its workpaper. */
+  person?: string;
+  state?: StepState | "open_any";
+  readiness?: Readiness;
+  programmeId?: string;
+  /** Words in the step, an RFI number, or a workpaper's ref / title. */
+  q?: string;
+}
+
+export function chainView(snap: Snapshot, engagementId: string, today: string, settings: Pick<Settings, "myName" | "myAliases" | "groupNames">): ChainView {
+  const e = snap.engagements.find((x) => x.id === engagementId);
+  const steps = snap.planItems.filter((s) => !s.deleted && s.engagementId === engagementId).sort((a, b) => a.order - b.order);
+  const wps = new Map(snap.workpapers.filter((w) => !w.deleted).map((w) => [w.id, w]));
+  const progs = programmesOf(engagementId, snap.programmes);
+  const rfi = new Map(snap.infoRequests.filter((r) => !r.deleted && r.engagementId === engagementId).map((r) => [r.id, r]));
+  const ready = e ? new Map(engagementReadiness(e, snap.planItems, snap.infoRequests, today).steps.map((r) => [r.step.id, r])) : new Map();
+  const ix = peopleIndex(snap.people, settings);
+  const groups = new Map<string, ChainProgramme>();
+  for (const p of progs) groups.set(p.id, { id: p.id, programme: p, name: p.name, tbArea: p.tbArea, steps: [], applicable: 0, closed: 0 });
+  let needsSetup = false;
+  for (const s of steps) {
+    let g = s.programmeId ? groups.get(s.programmeId) : undefined;
+    if (!g) {
+      needsSetup = true;
+      const name = programmeNameOf(s);
+      const id = `area:${name}`;
+      g = groups.get(id) ?? { id, name, tbArea: tbAreaFor(name), steps: [], applicable: 0, closed: 0 };
+      groups.set(id, g);
+    }
+    const wp = s.workpaperId ? wps.get(s.workpaperId) : undefined;
+    const state = stepState(s, wp);
+    const r = ready.get(s.id);
+    const ownerIds = [...cellIds(s.assignee, ix), ...(s.assigneeId ? [s.assigneeId] : [])];
+    g.steps.push({
+      step: s,
+      state,
+      wp,
+      readiness: r?.state,
+      rfiNumbers: (r?.links.rfiIds ?? s.inputs?.rfiIds ?? []).map((id: string) => rfi.get(id)?.number).filter(Boolean) as string[],
+      preparerDiffers: !!(wp?.preparerId && ownerIds.length && !ownerIds.includes(wp.preparerId)),
+      closedNoWp: closedWithoutWorkpaper(s, wp),
+    });
+    if (state !== "na") g.applicable++;
+    if (state === "closed") g.closed++;
+  }
+  const order = (g: ChainProgramme) => g.programme?.order ?? 1e6 + Math.min(...g.steps.map((x) => x.step.order));
+  return {
+    programmes: [...groups.values()].filter((g) => g.programme || g.steps.length).sort((a, b) => order(a) - order(b)),
+    unlinked: unlinkedWorkpapers(engagementId, snap),
+    pendingItems: snap.programItems.filter((i) => !i.deleted && i.engagementId === engagementId && !i.migratedToId),
+    needsSetup,
+  };
+}
+
+const OPEN_STATES = new Set<StepState>(["open", "wip", "to_review", "in_review", "points_raised"]);
+
+/** Applies person / status / readiness / area / search filters; programmes with no matching step drop out. */
+export function filterChain(view: ChainView, f: ChainFilter, snap: Pick<Snapshot, "people">, settings: Pick<Settings, "myName" | "myAliases" | "groupNames">): ChainProgramme[] {
+  const ix = peopleIndex(snap.people, settings);
+  const q = f.q?.trim().toLowerCase().replace(/^rfi\s*/, "");
+  const hit = (x: ChainStep) => {
+    if (f.person) {
+      const ids = new Set([...cellIds(x.step.assignee, ix), ...(x.step.assigneeId ? [x.step.assigneeId] : [])]);
+      const wpIds = [x.wp?.preparerId, x.wp?.reviewerId].filter(Boolean);
+      if (!ids.has(f.person) && !wpIds.includes(f.person) && !(f.person === ME && cellIds(x.step.reviewer, ix).includes(ME))) return false;
+    }
+    if (f.state && (f.state === "open_any" ? !OPEN_STATES.has(x.state) : x.state !== f.state)) return false;
+    if (f.readiness && x.readiness !== f.readiness) return false;
+    if (q) {
+      const text = [x.step.number, x.step.text, x.wp?.ref, x.wp?.title, ...x.rfiNumbers].filter(Boolean).join(" ").toLowerCase();
+      if (!text.includes(q) && !x.rfiNumbers.includes(q)) return false;
+    }
+    return true;
+  };
+  return view.programmes
+    .filter((g) => !f.programmeId || g.id === f.programmeId)
+    .map((g) => ({ ...g, steps: g.steps.filter(hit) }))
+    .filter((g) => g.steps.length || (!f.person && !f.state && !f.readiness && !q));
+}
+
+// ---------- Creating workpapers for steps (A3) and editing links ----------
+
+export interface WorkpaperDefaults {
+  ref: string;
+  title: string;
+  /** Person id, ME, or undefined when the steps don't share one (or say "Team"): ask. */
+  preparer?: string;
+  reviewer?: string;
+  /** TB area of the first step's programme (drives the guided review library). */
+  area?: string;
+}
+
+/** Defaults for a workpaper covering these steps: ref and title from the first, people they share. */
+export function workpaperDefaults(stepIds: string[], snap: Pick<Snapshot, "planItems" | "programmes" | "people">, settings: Pick<Settings, "myName" | "myAliases" | "groupNames">): WorkpaperDefaults {
+  const steps = stepIds.map((id) => snap.planItems.find((s) => s.id === id)).filter((s): s is PlanItem => !!s);
+  if (!steps.length) return { ref: "", title: "" };
+  const ix = peopleIndex(snap.people, settings);
+  const one = (cells: (string | undefined)[], ids: (string | undefined)[]) => {
+    const sets = cells.map((c, i) => (ids[i] ? [ids[i]!] : cellIds(c, ix)));
+    const first = sets[0];
+    return first?.length === 1 && sets.every((x) => x.length === 1 && x[0] === first[0]) ? first[0] : undefined;
+  };
+  const first = steps[0];
+  const prog = first.programmeId ? snap.programmes.find((p) => p.id === first.programmeId) : undefined;
+  return {
+    ref: first.number || "",
+    title: shortTitle(first.text),
+    preparer: one(steps.map((s) => s.assignee), steps.map((s) => s.assigneeId)),
+    reviewer: one(steps.map((s) => s.reviewer), steps.map((s) => s.reviewerId)),
+    area: prog?.tbArea ?? tbAreaFor(programmeNameOf(first)),
+  };
+}
+
+export class LinkError extends Error {}
+
+/**
+ * Creates a workpaper and links it to the steps it covers, in one batch.
+ * Steps are required unless `adHoc` is set (brief A3). Steps already on
+ * another workpaper move to this one.
+ */
+export async function createWorkpaperForSteps(
+  ctx: Ctx,
+  input: {
+    engagementId: string;
+    stepIds: string[];
+    adHoc?: boolean;
+    ref: string;
+    title: string;
+    /** Person id; empty / ME = me. */
+    preparerId?: string;
+    reviewerId?: string;
+    status?: WorkPaper["status"];
+    due?: string;
+    notes?: string;
+    area?: string;
+    workstreamId?: string;
+    openItems?: { text: string; rfiItemId?: string }[];
+  },
+) {
+  if (!input.stepIds.length && !input.adHoc) throw new LinkError("Say which worksteps this workpaper covers, or mark it ad-hoc (not linked to any step).");
+  const steps = [];
+  for (const id of input.stepIds) {
+    const s = await ctx.store.get("planItems", id);
+    if (!s || s.deleted || s.engagementId !== input.engagementId) throw new LinkError(`No workstep ${id} on this engagement.`);
+    if (!s.applicable) throw new LinkError(`Step ${s.number || shortTitle(s.text)} is N/A, so it needs no workpaper.`);
+    steps.push(s);
+  }
+  const prep = input.preparerId && input.preparerId !== ME ? input.preparerId : undefined;
+  const rev = input.reviewerId && input.reviewerId !== ME ? input.reviewerId : undefined;
+  const wp = await create(ctx, "workpapers", {
+    engagementId: input.engagementId,
+    workstreamId: input.workstreamId,
+    ref: input.ref.trim() || steps[0]?.number || "WP",
+    title: input.title.trim() || (steps[0] ? shortTitle(steps[0].text) : "Workpaper"),
+    // I prepare it unless someone else is named as preparer.
+    myRole: prep ? "reviewer" : "preparer",
+    preparerId: prep,
+    reviewerId: rev,
+    status: input.status,
+    due: input.due,
+    notes: input.notes,
+    area: input.area,
+    adHoc: input.adHoc && !steps.length ? true : undefined,
+    openItems: input.openItems?.map((o) => ({ id: newId(), text: o.text, rfiItemId: o.rfiItemId, resolved: false })),
+  });
+  for (const s of steps) await update(ctx, "planItems", s.id, { workpaperId: wp.record.id });
+  return { workpaper: wp.record, steps: steps.map((s) => s.id) };
+}
+
+/** Sets exactly which steps a workpaper covers: links the new ones (moving them from another workpaper), unlinks the rest. */
+export async function setWorkpaperSteps(ctx: Ctx, workpaperId: string, stepIds: string[]) {
+  const wp = await ctx.store.get("workpapers", workpaperId);
+  if (!wp || wp.deleted) throw new LinkError(`No workpaper ${workpaperId}.`);
+  const all = (await ctx.store.list("planItems")).filter((s) => !s.deleted && s.engagementId === wp.engagementId);
+  const want = new Set(stepIds);
+  const linked: string[] = [];
+  const unlinked: string[] = [];
+  for (const id of want) {
+    const s = all.find((x) => x.id === id);
+    if (!s) throw new LinkError(`No workstep ${id} on this engagement.`);
+    if (!s.applicable) throw new LinkError(`Step ${s.number || shortTitle(s.text)} is N/A, so it needs no workpaper.`);
+    if (s.workpaperId !== workpaperId) {
+      await update(ctx, "planItems", s.id, { workpaperId });
+      linked.push(s.id);
+    }
+  }
+  for (const s of all.filter((x) => x.workpaperId === workpaperId && !want.has(x.id))) {
+    await update(ctx, "planItems", s.id, { workpaperId: null });
+    unlinked.push(s.id);
+  }
+  if (want.size && wp.adHoc) await update(ctx, "workpapers", wp.id, { adHoc: null });
+  return { linked, unlinked };
+}
+
+// ---------- Guard rails (A4) ----------
+
+/** A step can't be closed without a workpaper at cleared / final (unless N/A). */
+export class StepCloseError extends Error {
+  constructor(
+    readonly stepId: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+/** A workpaper can't be cleared / final while review points are open. */
+export class OpenPointsError extends Error {
+  constructor(
+    readonly workpaperId: string,
+    readonly points: { id: string; text: string }[],
+  ) {
+    super(`Clear the ${points.length} open review point${points.length === 1 ? "" : "s"} first: ${points.map((p) => `“${p.text.split("\n")[0].slice(0, 80)}”`).join("; ")}.`);
+  }
+}
+
+/** Review points on a workpaper not cleared yet (open or addressed). */
+export async function openPointsOf(ctx: Pick<Ctx, "store">, workpaperId: string) {
+  return (await ctx.store.list("reviewPoints")).filter((p) => !p.deleted && p.workpaperId === workpaperId && p.status !== "cleared");
+}
+
+const DONE: WorkPaper["status"][] = ["cleared", "final"];
+
+/** Moves a workpaper's status, refusing cleared / final while points are open. */
+export async function setWorkpaperStatus(ctx: Ctx, workpaperId: string, status: WorkPaper["status"]) {
+  if (DONE.includes(status)) {
+    const open = await openPointsOf(ctx, workpaperId);
+    if (open.length) throw new OpenPointsError(workpaperId, open.map((p) => ({ id: p.id, text: p.text })));
+  }
+  return update(ctx, "workpapers", workpaperId, { status });
+}
+
+/**
+ * Changes a step. Its status comes from its workpaper, so closing it (the
+ * old execution / review status) is refused unless the workpaper is
+ * cleared / final or the step is N/A; marking a step N/A keeps its workpaper
+ * (edge case 1: the caller asks whether to delete it).
+ */
+export async function updateStep(ctx: Ctx, id: string, patch: Parameters<typeof update<"planItems">>[3]) {
+  const s = await ctx.store.get("planItems", id);
+  if (!s || s.deleted) throw new StepCloseError(id, `No workstep ${id}.`);
+  const closing = patch.status === "closed" || patch.reviewStatus === "closed";
+  const applicable = patch.applicable ?? s.applicable;
+  if (closing && applicable) {
+    const wpId = patch.workpaperId === undefined ? s.workpaperId : (patch.workpaperId ?? undefined);
+    const wp = wpId ? await ctx.store.get("workpapers", wpId) : undefined;
+    if (!wp || wp.deleted) throw new StepCloseError(id, `Step ${s.number || shortTitle(s.text)} has no workpaper. Create one (it closes when the workpaper is cleared), or mark the step N/A.`);
+    if (!DONE.includes(wp.status)) throw new StepCloseError(id, `Step ${s.number || shortTitle(s.text)} closes when its workpaper ${wp.ref} is cleared (it's ${wp.status.replace(/_/g, " ")}).`);
+  }
+  return update(ctx, "planItems", id, patch);
 }

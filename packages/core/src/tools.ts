@@ -28,6 +28,7 @@ import { namedIn, planAwaitingReview, planProgress } from "./workplan";
 import { ME, cellHas, peopleIndex, pointOwner } from "./people";
 import { blockerText, engagementReadiness, itemsByStepsHeldUp, readinessLabels, rfiImpact } from "./readiness";
 import { OverlayStore, diffLines, isAutoApply, propose, recordTitle } from "./proposals";
+import { setWorkpaperStatus, updateStep } from "./chain";
 import { periodReport, shiftWeek, timesheet, timesheetText, weekDays, weekStart } from "./time";
 import { loadSnapshot, type Store } from "./store";
 import {
@@ -380,7 +381,7 @@ export const tools = [
     }),
     async run(ctx, { workpaper, engagement, status }) {
       const w = await resolveWorkpaper(ctx.store, workpaper, engagement);
-      return { updated: brief("workpapers", (await update(ctx, "workpapers", w.id, { status })).record) };
+      return { updated: brief("workpapers", (await setWorkpaperStatus(ctx, w.id, status)).record) };
     },
   }),
 
@@ -1011,7 +1012,7 @@ export const tools = [
     }),
     async run(ctx, { id, assignee, ...rest }) {
       const p = assignee ? await resolvePerson(ctx, assignee).catch(() => undefined) : undefined;
-      const r = await update(ctx, "planItems", id, { ...rest, ...(assignee === undefined ? {} : { assignee, assigneeId: p?.id }) });
+      const r = await updateStep(ctx, id, { ...rest, ...(assignee === undefined ? {} : { assignee, assigneeId: p?.id }) });
       return { updated: brief("planItems", r.record) };
     },
   }),

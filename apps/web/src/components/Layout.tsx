@@ -11,6 +11,7 @@ import { useSettings, useSnapshot, useToday } from "../lib/hooks";
 import { completeTimer, mmss, remainingMs, useTimer } from "../lib/timer";
 import { toast } from "../lib/toast";
 import { EditorHost, openEditor } from "./Editor";
+import { WorkpaperFormHost } from "./WorkpaperForm";
 import { LevelUpOverlay } from "./LevelUp";
 import { SyncBadge } from "./SyncBadge";
 import { ChatLauncher } from "./ChatDrawer";
@@ -132,6 +133,7 @@ export function Layout() {
       {!pathname.startsWith("/time") && <TimerPill />}
       <ChatLauncher />
       <EditorHost />
+      <WorkpaperFormHost />
       <LevelUpOverlay />
       <Toaster />
     </MotionConfig>

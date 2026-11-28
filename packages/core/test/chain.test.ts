@@ -217,3 +217,70 @@ describe("work plan import makes programmes", () => {
     expect(steps.every((x) => x.programmeId === progs[0].id)).toBe(true);
   });
 });
+
+describe("guard rails (A4)", () => {
+  it("a step can't close without a cleared workpaper, unless N/A", async () => {
+    const { updateStep, StepCloseError, setWorkpaperStatus } = await import("../src");
+    const s = await seed();
+    await expect(updateStep(s.ctx, s.steps.s43.id, { status: "closed" })).rejects.toBeInstanceOf(StepCloseError);
+    await expect(updateStep(s.ctx, s.steps.s43.id, { reviewStatus: "closed" })).rejects.toThrow(/Create one|mark the step N\/A/);
+    // N/A is fine.
+    await updateStep(s.ctx, s.steps.s43.id, { applicable: false, status: "closed" });
+    // With a workpaper not yet cleared: refused, then fine once cleared.
+    await update(s.ctx, "planItems", s.steps.s42.id, { workpaperId: s.wps.cn.id });
+    await expect(updateStep(s.ctx, s.steps.s42.id, { status: "closed" })).rejects.toThrow(/closes when its workpaper CN is cleared/);
+    await setWorkpaperStatus(s.ctx, s.wps.cn.id, "cleared");
+    await updateStep(s.ctx, s.steps.s42.id, { status: "closed" });
+  });
+
+  it("a workpaper can't be cleared or final with open review points", async () => {
+    const { setWorkpaperStatus, OpenPointsError, runTool } = await import("../src");
+    const s = await seed();
+    const pt = (await create(s.ctx, "reviewPoints", { workpaperId: s.wps.cn.id, engagementId: s.eng.id, text: "Tie credit notes to GSTR-1" })).record;
+    const err = await setWorkpaperStatus(s.ctx, s.wps.cn.id, "cleared").catch((e) => e);
+    expect(err).toBeInstanceOf(OpenPointsError);
+    expect((err as InstanceType<typeof OpenPointsError>).points.map((p) => p.text)).toEqual(["Tie credit notes to GSTR-1"]);
+    // Addressed still counts as open; cleared doesn't.
+    await update(s.ctx, "reviewPoints", pt.id, { status: "addressed" });
+    await expect(setWorkpaperStatus(s.ctx, s.wps.cn.id, "final")).rejects.toThrow(/open review point/);
+    // The AI tool hits the same guard.
+    const r = await runTool({ store: s.store, by: "connector" }, "update_workpaper_status", { workpaper: s.wps.cn.id, status: "cleared" });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/Tie credit notes/);
+    await update(s.ctx, "reviewPoints", pt.id, { status: "cleared" });
+    await setWorkpaperStatus(s.ctx, s.wps.cn.id, "final");
+  });
+});
+
+describe("creating a workpaper for steps (A3)", () => {
+  it("needs steps or ad-hoc; links every picked step; defaults come from the steps", async () => {
+    const { createWorkpaperForSteps, workpaperDefaults, LinkError, ME } = await import("../src");
+    const s = await seed();
+    await expect(createWorkpaperForSteps(s.ctx, { engagementId: s.eng.id, stepIds: [], ref: "", title: "X" })).rejects.toBeInstanceOf(LinkError);
+    const snap = await loadSnapshot(s.store);
+    const d = workpaperDefaults([s.steps.s31.id, s.steps.s32.id], snap, { myName: "Test User", myAliases: ["TU"], groupNames: [] });
+    expect(d).toMatchObject({ ref: "3.1", title: "Verify the credit terms", preparer: s.people.ravi.id, reviewer: ME });
+    // "Team" owns 1.1: no default preparer (the form asks who).
+    expect(workpaperDefaults([s.steps.s11.id], snap, { myName: "Test User", myAliases: ["TU"], groupNames: [] }).preparer).toBeUndefined();
+    const r = await createWorkpaperForSteps(s.ctx, { engagementId: s.eng.id, stepIds: [s.steps.s31.id, s.steps.s32.id], ref: d.ref, title: d.title, preparerId: d.preparer, reviewerId: d.reviewer });
+    expect(r.workpaper.myRole).toBe("reviewer");
+    expect(r.workpaper.reviewerId).toBeUndefined(); // me
+    const after = await loadSnapshot(s.store);
+    expect(after.planItems.filter((x) => x.workpaperId === r.workpaper.id).map((x) => x.number)).toEqual(["3.1", "3.2"]);
+    // Both steps show the workpaper's status.
+    expect(stepState(after.planItems.find((x) => x.id === s.steps.s31.id)!, r.workpaper)).toBe("open");
+    const adhoc = await createWorkpaperForSteps(s.ctx, { engagementId: s.eng.id, stepIds: [], adHoc: true, ref: "AH", title: "Board minutes" });
+    expect(adhoc.workpaper.adHoc).toBe(true);
+  });
+
+  it("edits linked steps: moves steps from another workpaper, unlinks the rest", async () => {
+    const { setWorkpaperSteps } = await import("../src");
+    const s = await seed();
+    await update(s.ctx, "planItems", s.steps.s41.id, { workpaperId: s.wps.mom.id });
+    const r = await setWorkpaperSteps(s.ctx, s.wps.cn.id, [s.steps.s41.id, s.steps.s42.id]);
+    expect(r.linked.length).toBe(2);
+    expect((await s.store.get("planItems", s.steps.s41.id))?.workpaperId).toBe(s.wps.cn.id);
+    await setWorkpaperSteps(s.ctx, s.wps.cn.id, [s.steps.s42.id]);
+    expect((await s.store.get("planItems", s.steps.s41.id))?.workpaperId).toBeUndefined();
+  });
+});

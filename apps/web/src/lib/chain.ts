@@ -2,7 +2,9 @@
  * The app's side of the Programme → Workstep → Workpaper chain: queueing the
  * one-time set-up proposal per engagement (build brief v2 A1).
  */
-import { loadSnapshot, planMigration, proposeMigration } from "@falcon/core";
+import { OverlayStore, StepCloseError, loadSnapshot, planMigration, proposeMigration, updateStep, type Ctx, type PlanItem } from "@falcon/core";
+import { act } from "./act";
+import { toast } from "./toast";
 import { getSettings, store } from "../db";
 import { scheduleSync } from "./sync";
 
@@ -30,4 +32,56 @@ export async function proposeMigrationFor(engagementId: string) {
   const p = await proposeMigration(ctx(), engagementId);
   if (p) scheduleSync();
   return p;
+}
+
+/**
+ * Changes a step through the guard rail (A4): closing a step with no cleared
+ * workpaper is refused with "Create workpaper / Mark N/A".
+ */
+export async function changeStep(step: PlanItem, patch: Parameters<typeof updateStep>[2], message: string | null = "Saved") {
+  try {
+    // Check first (outside act, so the refusal isn't a plain error toast).
+    await updateStep({ ...ctx(), store: new OverlayStore(store) } as Ctx, step.id, patch);
+  } catch (e) {
+    if (e instanceof StepCloseError) {
+      stepClosePrompt(step, e.message);
+      return undefined;
+    }
+  }
+  return act(message, (c) => updateStep(c, step.id, patch));
+}
+
+/** "Create workpaper / Mark N/A" for a step that can't close yet. */
+export function stepClosePrompt(step: PlanItem, message: string) {
+  toast({
+    message,
+    tone: "error",
+    duration: 12000,
+    actions: [
+      {
+        label: "Create workpaper",
+        run: () => void import("../components/WorkpaperForm").then((m) => (step.workpaperId ? m.openStepLinks(step.workpaperId) : m.openWorkpaperForm({ stepIds: [step.id] }))),
+      },
+      { label: "Mark N/A", run: () => void markStepNa(step) },
+    ],
+  });
+}
+
+
+/**
+ * Marks a step N/A (edge case 1): its workpaper is kept and unlinked; when
+ * that leaves the workpaper covering nothing, offers to delete it.
+ */
+export async function markStepNa(step: PlanItem) {
+  const wpId = step.workpaperId;
+  const res = await act("Step marked N/A", (c) => updateStep(c, step.id, { applicable: false, workpaperId: null }));
+  if (!res || !wpId) return;
+  const snap = await loadSnapshot(store);
+  const wp = snap.workpapers.find((w) => w.id === wpId);
+  if (wp && !snap.planItems.some((s) => s.workpaperId === wpId))
+    toast({
+      message: `${wp.ref} ${wp.title} now covers no step. It's kept under Unlinked workpapers.`,
+      duration: 12000,
+      actions: [{ label: "Delete it", run: () => void import("@falcon/core").then((m) => act(`${wp.ref} deleted`, (c) => m.remove(c, "workpapers", wp.id))) }],
+    });
 }

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import {
   todayISO,
+  setWorkpaperStatus,
   daysBetween,
   labels,
   logChase,
@@ -105,7 +106,7 @@ export function WorkpaperRow({ wp, l, openPoints, hideEngagement }: { wp: WorkPa
         className="rounded-lg border border-transparent bg-transparent py-1 text-right text-xs font-semibold outline-none hover:border-[var(--border)]"
         value={wp.status}
         onClick={(e) => e.stopPropagation()}
-        onChange={(e) => act(`${wp.ref} → ${labels.wpStatus[e.target.value as WorkPaper["status"]]}`, (ctx) => update(ctx, "workpapers", wp.id, { status: e.target.value as WorkPaper["status"] }))}
+        onChange={(e) => act(`${wp.ref} → ${labels.wpStatus[e.target.value as WorkPaper["status"]]}`, (ctx) => setWorkpaperStatus(ctx, wp.id, e.target.value as WorkPaper["status"]))}
         aria-label="Work paper status"
       >
         {Object.entries(labels.wpStatus).map(([v, label]) => (

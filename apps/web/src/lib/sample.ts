@@ -91,4 +91,22 @@ export async function loadSampleData(ctx: Ctx) {
   ];
   for (const [daysAgo, engagementId, minutes, note, focus] of log)
     await create(ctx, "timeEntries", { date: ago(daysAgo), engagementId, minutes, note, focus, source: focus ? "timer" : "manual" });
+
+  // A work plan for Heron (programmes → worksteps → workpapers): areas, owners, and workpapers to link.
+  const plan: [string, string, string, string, string?][] = [
+    ["1.1", "General", "Understanding of the order-to-cash process", "Team"],
+    ["1.2", "General", "MIS vs BoA", "Sneha"],
+    ["2.1", "Accounts Receivable", "Verify the credit terms", "Arjun"],
+    ["2.2", "Accounts Receivable", "Ageing of receivables as at cut-off", "Arjun"],
+    ["2.3", "Accounts Receivable", "Collection check with bank statements", "Arjun"],
+    ["3.1", "Sales", "Invoicing check - client-wise MoM, BoA vs invoicing sheet", "Sneha", "closed"],
+    ["3.2", "Sales", "Credit notes analysis - MoM, reasons, GST implications", "Sneha"],
+    ["3.3", "Sales", "Recomputation of revenue basis invoicing sheet", "Sneha"],
+  ];
+  for (const [i, [number, area, text, assignee, status]] of plan.entries())
+    await create(ctx, "planItems", { engagementId: heron.id, number, area, text, assignee, reviewer: s.myName, order: i, ...(status === "closed" ? { status: "closed", reviewStatus: "closed" } : {}) });
+  await create(ctx, "workpapers", { engagementId: heron.id, ref: "3.1", title: "Revenue MoM", myRole: "reviewer", preparerId: arjun.id, status: "cleared" });
+  await create(ctx, "workpapers", { engagementId: heron.id, ref: "CN", title: "CN Analysis", myRole: "reviewer", preparerId: sneha.id, status: "prepared" });
+  await create(ctx, "workpapers", { engagementId: heron.id, ref: "AR", title: "Accounts receivable", myRole: "reviewer", preparerId: arjun.id, status: "points_raised" });
+  await create(ctx, "programItems", { engagementId: heron.id, area: "revenue", text: "Agree the billing register to revenue each month", why: "Billing must agree to books before collections are mapped", source: "ai" });
 }

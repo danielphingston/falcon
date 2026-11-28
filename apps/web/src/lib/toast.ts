@@ -4,6 +4,8 @@ export interface Toast {
   id: number;
   message: string;
   action?: { label: string; run: () => void };
+  /** More than one choice, e.g. "Create workpaper" / "Mark N/A". */
+  actions?: { label: string; run: () => void }[];
   tone?: "default" | "success" | "error";
   duration?: number;
 }

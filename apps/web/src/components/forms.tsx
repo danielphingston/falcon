@@ -144,10 +144,9 @@ export const formDefs: Record<TableName, FieldDef[]> = {
     { name: "text", label: "Procedure", type: "textarea", required: true },
     { name: "area", label: "Area", type: "text", half: true },
     { name: "number", label: "No.", type: "text", half: true },
-    { name: "assignee", label: "Person responsible", type: "text", half: true },
-    { name: "status", label: "Execution", type: "select", options: [{ value: "open", label: "Open" }, { value: "wip", label: "WIP" }, { value: "review", label: "Review pending" }, { value: "closed", label: "Closed" }], half: true },
-    { name: "reviewer", label: "Reviewed by", type: "text", half: true },
-    { name: "reviewStatus", label: "Review", type: "select", options: [{ value: "open", label: "Open" }, { value: "wip", label: "WIP" }, { value: "closed", label: "Closed" }], half: true },
+    { name: "assignee", label: "Owner", type: "text", half: true },
+    { name: "reviewer", label: "Reviewer", type: "text", half: true },
+    { name: "applicable", label: "Applicable", type: "select", options: [{ value: "true", label: "Applicable" }, { value: "false", label: "N/A (needs no workpaper)" }], half: true },
     { name: "budgetHours", label: "Budget hours", type: "number", half: true },
     { name: "actualHours", label: "Actual hours", type: "number", half: true },
     { name: "risk", label: "Risk", type: "text", half: true },
@@ -411,7 +410,9 @@ export function valuesToPatch(fields: FieldDef[], values: FormValues, mode: "cre
             ? Math.min(1440, Math.max(5, Math.round(Number(raw))))
             : f.type === "time"
               ? (raw as string).slice(0, 5)
-              : raw;
+              : f.type === "select" && (raw === "true" || raw === "false")
+                ? raw === "true"
+                : raw;
   }
   return out;
 }
