@@ -5,7 +5,7 @@
  * the reviewer marks it re-reviewed or the item is resolved.
  */
 import { useState } from "react";
-import { newId, rereviewFlags, update, type OpenItem, type WorkPaper } from "@falcon/core";
+import { rfiTitle, newId, rereviewFlags, update, type OpenItem, type WorkPaper } from "@falcon/core";
 import { act } from "../lib/act";
 import { useSnapshot } from "../lib/hooks";
 import { Icon } from "./Icon";
@@ -91,7 +91,7 @@ export function OpenItemsPanel({ wp }: { wp: WorkPaper }) {
           <option value="">No RFI item</option>
           {rfiItems.map((r) => (
             <option key={r.id} value={r.id}>
-              {r.number} {r.description.split("\n")[0].slice(0, 50)}
+              {r.number} {rfiTitle(r.description).slice(0, 50)}
             </option>
           ))}
         </select>

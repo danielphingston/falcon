@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import {
+import { rfiTitle,
   BLOCKER_HEAD,
   blockerHtml,
   blockerRows,
@@ -392,7 +392,7 @@ function RfiLookup({ r, rfi }: { r: EngagementReadiness; rfi: InfoRequest[] }) {
           <div key={item.id} className="rounded-xl border border-[var(--border)] p-2">
             <button className="text-left text-sm font-medium hover:underline" onClick={() => openEditor({ table: "infoRequests", id: item.id })}>
               <span className="mr-1 font-mono text-xs muted">RFI {item.number}</span>
-              {item.description.split("\n")[0]} <span className="text-xs muted">· {item.status}</span>
+              {rfiTitle(item.description)} <span className="text-xs muted">· {item.status}</span>
             </button>
             {imp.steps.length ? (
               <ul className="mt-1 space-y-0.5 text-xs">

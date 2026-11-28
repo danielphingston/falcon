@@ -208,7 +208,12 @@ function Choices({ p, picked, setPicked }: { p: Proposal; picked: string[]; setP
   }, [p.choices]);
   const pending = p.status === "pending";
   const on = new Set(closeChoices(p, picked));
-  const toggle = (key: string, v: boolean) => setPicked(v ? [...picked, key] : picked.filter((k) => k !== key));
+  const toggle = (key: string, v: boolean) => {
+    // Ticking one of two choices that exclude each other unticks the other.
+    const c = (p.choices ?? []).find((x) => x.key === key);
+    const out = new Set([...(c?.excludes ?? []), ...(p.choices ?? []).filter((x) => x.excludes?.includes(key)).map((x) => x.key)]);
+    setPicked(v ? [...picked.filter((k) => !out.has(k)), key] : picked.filter((k) => k !== key));
+  };
   return (
     <div className="mt-2 space-y-2">
       {groups.map(([g, list]) => (

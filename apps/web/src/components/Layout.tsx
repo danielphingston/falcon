@@ -18,7 +18,7 @@ import { ChatLauncher } from "./ChatDrawer";
 import { startAutoSync } from "../lib/sync";
 import { startBridge } from "../lib/bridge";
 import { warmGoogle } from "../lib/google";
-import { carryTasksForward, proposeChaseResets, proposeMissingMigrations, tidyOpenItems } from "../lib/chain";
+import { carryTasksForward, proposeChaseResets, proposeMissingMigrations, proposeOrphans, tidyOpenItems } from "../lib/chain";
 import { Icon, type IconName } from "./Icon";
 import { TLink } from "./TLink";
 import { Toaster } from "./ui";
@@ -188,6 +188,7 @@ function useChainSetup() {
     const id = setTimeout(() => {
       void proposeMissingMigrations().catch(() => undefined);
       void proposeChaseResets().catch(() => undefined);
+      void proposeOrphans().catch(() => undefined);
     }, 15_000);
     return () => clearTimeout(id);
   }, []);

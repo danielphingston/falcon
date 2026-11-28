@@ -4,7 +4,7 @@
  * client's person responsible as a name). One undo batch.
  */
 import { useMemo, useState } from "react";
-import { assignContact, withoutContact, type Snapshot } from "@falcon/core";
+import { rfiTitle, assignContact, withoutContact, type Snapshot } from "@falcon/core";
 import { act } from "../lib/act";
 import { Sheet } from "./ui";
 
@@ -101,7 +101,7 @@ export function BulkAssign({ snap, open, onClose, engagementId: initial }: { sna
                   />
                   <span className="min-w-0">
                     <span className="mr-1.5 font-mono text-xs muted">{r.number}</span>
-                    {r.description.split("\n")[0]}
+                    {rfiTitle(r.description)}
                     {r.section && <span className="block text-xs muted">{r.section}</span>}
                   </span>
                 </label>

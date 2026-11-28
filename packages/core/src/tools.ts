@@ -31,6 +31,7 @@ import { OverlayStore, diffLines, isAutoApply, propose, recordTitle } from "./pr
 import { createWorkpaperForSteps, setWorkpaperStatus, setWorkpaperSteps, updateStep, workpaperDefaults } from "./chain";
 import { periodReport, shiftWeek, timesheet, timesheetText, weekDays, weekStart } from "./time";
 import { loadSnapshot, type Store } from "./store";
+import { rfiTitle } from "./rfi";
 import {
   engagementStatuses,
   followUpTypes,
@@ -190,7 +191,7 @@ export const tools = [
         dueToday: v.dueToday.map(line),
         toReview: v.toReview.map((w) => ({ id: w.id, ref: w.ref, title: w.title, engagement: eng.get(w.engagementId), status: w.status })),
         chase: v.chase.map((g) => ({ person: g.person?.name ?? g.name ?? "Unassigned", items: g.items.map(line) })),
-        needAContact: v.assignContact.map((r) => ({ id: r.id, number: r.number, title: firstLine(r.description), engagement: eng.get(r.engagementId) })),
+        needAContact: v.assignContact.map((r) => ({ id: r.id, number: r.number, title: rfiTitle(r.description), engagement: eng.get(r.engagementId) })),
         unlockedSinceYesterday: v.unlocked.map((u) => ({ id: u.step.id, number: u.step.number, step: firstLine(u.step.text), owner: u.step.assignee, now: readinessLabels[u.to] })),
         pointsToClear: v.pointsToClear.map((p) => ({ id: p.id, text: p.text, workpaperId: p.workpaperId, due: p.due })),
         pastMeetings: v.past.map((t) => ({ id: t.id, title: t.title, on: t.due, time: t.dueTime })),
@@ -998,7 +999,7 @@ export const tools = [
         ? snap.infoRequests
             .filter((r) => r.engagementId === e.id)
             .sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }))
-            .map((r) => ({ number: r.number, section: r.section, status: r.status, description: r.description.split("\n")[0].slice(0, 140) }))
+            .map((r) => ({ number: r.number, section: r.section, status: r.status, description: rfiTitle(r.description).slice(0, 140) }))
         : undefined;
       const full = person ? ((await resolvePerson(ctx, person).catch(() => undefined))?.name ?? person) : "";
       const plan = snap.planItems.filter((i) => !person || namedIn(i.assignee, full) || namedIn(i.assignee, person));
@@ -1059,7 +1060,7 @@ export const tools = [
           engagement: e.name,
           holdingUpMost: itemsByStepsHeldUp(r, rfi)
             .slice(0, 15)
-            .map((x) => ({ number: x.item.number, item: x.item.description.split("\n")[0], status: x.item.status, steps: x.steps })),
+            .map((x) => ({ number: x.item.number, item: rfiTitle(x.item.description), status: x.item.status, steps: x.steps })),
         };
       const q = item.trim().replace(/^rfi\s*/i, "");
       const hit = rfi.find((x) => x.id === q) ?? rfi.find((x) => x.number === q) ?? rfi.find((x) => x.description.toLowerCase().includes(q.toLowerCase()));
@@ -1067,7 +1068,7 @@ export const tools = [
       const imp = rfiImpact(r, hit);
       return {
         engagement: e.name,
-        item: { id: hit.id, number: hit.number, description: hit.description.split("\n")[0], status: hit.status },
+        item: { id: hit.id, number: hit.number, description: rfiTitle(hit.description), status: hit.status },
         feeds: imp.steps.length,
         steps: imp.steps.map((s) => ({
           number: s.step.number,

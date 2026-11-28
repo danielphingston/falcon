@@ -2,7 +2,7 @@
  * The app's side of the Programme → Workstep → Workpaper chain: queueing the
  * one-time set-up proposal per engagement (build brief v2 A1).
  */
-import { OverlayStore, StepCloseError, carryForward, chaseResets, newId, resolveNaOpenItems, loadSnapshot, planMigration, proposeMigration, runTool, todayISO, updateStep, type Ctx, type PlanItem } from "@falcon/core";
+import { OverlayStore, StepCloseError, carryForward, chaseResets, newId, proposeOrphanCleanups, resolveNaOpenItems, loadSnapshot, planMigration, proposeMigration, runTool, todayISO, updateStep, type Ctx, type PlanItem } from "@falcon/core";
 import { act } from "./act";
 import { toast } from "./toast";
 import { getSettings, store } from "../db";
@@ -123,4 +123,11 @@ export async function carryTasksForward(today = todayISO()) {
     action: { label: "Undo", run: () => void import("@falcon/core").then(async (m) => (await m.undoBatch(store, batchId), scheduleSync())) },
   });
   return moved.length;
+}
+
+/** Records under engagements that no longer exist: one Inbox proposal per group (brief v2 B5). */
+export async function proposeOrphans() {
+  const n = await proposeOrphanCleanups(ctx());
+  if (n) scheduleSync();
+  return n;
 }

@@ -10,6 +10,7 @@
 import { applyRecord, create, newId, update, type Ctx } from "./actions";
 import type { AnyEntity, Change, Proposal, Settings, TableName } from "./schema";
 import { loadSnapshot, type Store } from "./store";
+import { rfiTitle } from "./rfi";
 
 export type Captured = Proposal["changes"][number];
 
@@ -121,7 +122,7 @@ export function recordTitle(table: string, r: Record<string, unknown> | null | u
   if (!r) return "";
   const s = (k: string) => (typeof r[k] === "string" ? (r[k] as string) : "");
   const first = (t: string) => t.split("\n")[0].slice(0, 80);
-  if (table === "infoRequests") return `${s("number") ? `RFI ${s("number")} ` : ""}${first(s("description"))}`;
+  if (table === "infoRequests") return `${s("number") ? `RFI ${s("number")} ` : ""}${rfiTitle(s("description")).slice(0, 80)}`;
   if (table === "planItems") return `${s("number") ? `${s("number")} ` : ""}${first(s("text"))}`;
   if (table === "workpapers") return `${s("ref")} ${s("title")}`.trim();
   return first(s("title") || s("name") || s("about") || s("text") || s("description") || s("note"));
@@ -208,7 +209,15 @@ export function defaultChoices(p: Pick<Proposal, "choices">): string[] {
 
 /** Drops picked choices whose required choices aren't picked. */
 export function closeChoices(p: Pick<Proposal, "choices">, picked: string[]): string[] {
-  let keys = new Set(picked.filter((k) => (p.choices ?? []).some((c) => c.key === k)));
+  // Of two choices that exclude each other, the one picked first stays.
+  const kept: string[] = [];
+  for (const k of picked) {
+    const c = (p.choices ?? []).find((x) => x.key === k);
+    if (!c || kept.includes(k)) continue;
+    if (kept.some((x) => c.excludes?.includes(x) || (p.choices ?? []).find((y) => y.key === x)?.excludes?.includes(k))) continue;
+    kept.push(k);
+  }
+  let keys = new Set(kept);
   for (;;) {
     const next = new Set([...keys].filter((k) => ((p.choices ?? []).find((c) => c.key === k)?.requires ?? []).every((r) => keys.has(r))));
     if (next.size === keys.size) return [...next];

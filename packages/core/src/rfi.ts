@@ -613,3 +613,22 @@ export async function applyRfi(
   }
   return out;
 }
+
+/**
+ * An RFI item's title (brief v2 B3): its first non-empty line, plus the next
+ * line when the first is only a label ("Input", "Output:", "1. Income Tax
+ * Portal"), e.g. "Output – GSTR 1 & GSTR 3B for the DD period". The full
+ * text stays in the description.
+ */
+export function rfiTitle(description: string): string {
+  const lines = description.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const first = lines[0] ?? "";
+  if (lines.length < 2) return first;
+  const bare = first.replace(/[:\-–]+$/, "").trim();
+  const label =
+    /:$/.test(first) ||
+    /^(inputs?|outputs?|notes?|documents?|details?|data|reports?|others?|general|particulars)$/i.test(bare) ||
+    // A short numbered heading: "1. Income Tax Portal", "(a) GST".
+    (/^(\(?[0-9ivx]+[.)]|[a-z][.)])\s+\S/i.test(first) && bare.length <= 40 && !/[.;]$/.test(bare) && bare.split(/\s+/).length <= 5);
+  return label ? `${bare} – ${lines[1]}` : first;
+}

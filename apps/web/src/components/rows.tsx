@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import {
+import { rfiTitle,
   todayISO,
   setWorkpaperStatus,
   daysBetween,
@@ -133,9 +133,9 @@ export function IrlRow({ item, l, today, hideEngagement }: { item: InfoRequest; 
         onChange={(on) => act(on ? "Marked received" : "Reopened", (ctx) => update(ctx, "infoRequests", item.id, { status: on ? "received" : "pending" }))}
       />
       <div className="min-w-0 flex-1">
-        <p className={`truncate text-[15px] ${!open ? "line-through muted" : ""}`}>
+        <p className={`truncate text-[15px] ${!open ? "line-through muted" : ""}`} title={item.description}>
           {item.number && <span className="mr-1.5 font-mono text-xs muted">#{item.number}</span>}
-          {item.description.split("\n")[0]}
+          {rfiTitle(item.description)}
         </p>
         {item.clientComment && <p className="truncate text-xs text-sky-700 dark:text-sky-300">Client: {item.clientComment}</p>}
         <Meta>

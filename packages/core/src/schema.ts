@@ -466,6 +466,8 @@ export const proposalFields = z.object({
         defaultOn: z.boolean().default(true),
         /** Other choices this one only makes sense with (e.g. renaming a ref needs the link). */
         requires: z.array(z.string()).optional(),
+        /** Choices that can't go with this one (e.g. "move" and "delete" the same records). */
+        excludes: z.array(z.string()).optional(),
         patches: z.array(
           z.object({
             table: z.string(),

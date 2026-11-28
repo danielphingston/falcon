@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { guessInputs, labels, update, type InfoRequest, type PlanItem } from "@falcon/core";
+import { rfiTitle, guessInputs, labels, update, type InfoRequest, type PlanItem } from "@falcon/core";
 import { act } from "../lib/act";
 import { useSnapshot } from "../lib/hooks";
 import { Icon } from "./Icon";
@@ -83,7 +83,7 @@ export function StepInputs({ item }: { item: PlanItem }) {
                     <Pill tone={tone[r.status]}>{labels.irlStatus[r.status]}</Pill>
                     <span className="min-w-0 flex-1">
                       {r.number && <span className="mr-1 font-mono text-xs muted">RFI {r.number}</span>}
-                      {r.description.split("\n")[0]}
+                      {rfiTitle(r.description)}
                     </span>
                     <button aria-label="Remove" className="muted" onClick={() => void save({ rfiIds: rfiIds.filter((x) => x !== id) })}>
                       <Icon name="x" size={14} />
@@ -115,7 +115,7 @@ export function StepInputs({ item }: { item: PlanItem }) {
                       <Icon name="plus" size={14} className="mt-0.5 shrink-0" />
                       <span className="min-w-0">
                         {r.number && <span className="mr-1 font-mono text-xs muted">{r.number}</span>}
-                        {r.description.split("\n")[0]}
+                        {rfiTitle(r.description)}
                       </span>
                     </button>
                   </li>
