@@ -297,7 +297,9 @@ export function engagementReadiness(
 
   const out: StepReadiness[] = steps.map((step) => {
     const set = step.inputs;
-    const guess = set ? undefined : guessInputs(step, items);
+    // The offline matcher only guesses for imported plan steps; TB / AI / hand-added steps are linked on purpose.
+    const imported = !step.source || step.source === "work_plan_import";
+    const guess = set ? undefined : imported ? guessInputs(step, items) : { rfiIds: [] as string[], missing: [] as string[] };
     const rfiIds = (set?.rfiIds ?? guess!.rfiIds).filter((id) => byId.has(id));
     const extra = set?.extra ?? guess!.missing.map((name) => ({ name, received: false }));
     const none = !!set?.none;

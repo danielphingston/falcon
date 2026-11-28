@@ -1,6 +1,6 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useMemo, useState } from "react";
-import { diffLines, recordTitle, type Proposal } from "@falcon/core";
+import { closeChoices, defaultChoices, diffLines, recordTitle, type Proposal } from "@falcon/core";
 import { Icon } from "../components/Icon";
 import { useLookups } from "../components/rows";
 import { EmptyState, Pill, Segmented, type Tone } from "../components/ui";
@@ -32,8 +32,9 @@ const NOUN: Record<string, string> = {
   followUps: "Follow-up",
   alerts: "Alert",
   timeEntries: "Time entry",
-  programItems: "Programme step",
-  planItems: "Work plan step",
+  programItems: "Programme item",
+  planItems: "Workstep",
+  programmes: "Programme",
   workstreams: "Workstream",
 };
 /** "nextChaseOn" → "Next chase on". */
@@ -108,6 +109,8 @@ export function ProposalCard({ p, compact = false }: { p: Proposal; compact?: bo
   const l = useLookups();
   const [open, setOpen] = useState(!compact && p.changes.length <= 3);
   const [busy, setBusy] = useState(false);
+  // Optional parts (links, owners…): ticked by default as proposed; the user picks before accepting.
+  const [picked, setPicked] = useState<string[]>(() => (p.status === "pending" ? defaultChoices(p) : (p.chosen ?? [])));
   // An accepted proposal can be undone while its change hasn't been undone already.
   const undone = useLiveQuery(async () => (p.batchId ? (await db.changes.where("batchId").equals(p.batchId).toArray()).every((c) => c.undone) : false), [p.batchId]);
   // Linked records show by name, not id.
@@ -142,8 +145,8 @@ export function ProposalCard({ p, compact = false }: { p: Proposal; compact?: bo
           {p.status !== "pending" && <Pill tone={tone}>{status}</Pill>}
           {p.status === "pending" && (
             <>
-              <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void run(() => accept(p.id))}>
-                Accept
+              <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void run(() => accept(p.id, p.choices?.length ? picked : undefined))}>
+                {p.choices?.length ? `Accept (${closeChoices(p, picked).length}/${p.choices.length} ticked)` : "Accept"}
               </button>
               <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void run(() => reject(p.id))}>
                 Reject
@@ -157,9 +160,12 @@ export function ProposalCard({ p, compact = false }: { p: Proposal; compact?: bo
           )}
         </div>
       </div>
-      <button className="mt-2 text-xs text-[var(--accent)]" onClick={() => setOpen((v) => !v)}>
-        {open ? "▾ Hide details" : `▸ ${p.changes.length} change${p.changes.length === 1 ? "" : "s"}`}
-      </button>
+      {!!p.choices?.length && <Choices p={p} picked={picked} setPicked={setPicked} />}
+      {!!p.changes.length && (
+        <button className="mt-2 text-xs text-[var(--accent)]" onClick={() => setOpen((v) => !v)}>
+          {open ? "▾ Hide details" : `▸ ${p.changes.length} change${p.changes.length === 1 ? "" : "s"}${p.choices?.length ? " always applied" : ""}`}
+        </button>
+      )}
       {open && (
         <ul className="mt-2 space-y-2">
           {p.changes.map((c, i) => (
@@ -189,6 +195,56 @@ export function ProposalCard({ p, compact = false }: { p: Proposal; compact?: bo
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/** Tick / untick each optional part of a proposal, grouped ("Links", "Owners"…). */
+function Choices({ p, picked, setPicked }: { p: Proposal; picked: string[]; setPicked: (v: string[]) => void }) {
+  const groups = useMemo(() => {
+    const m = new Map<string, NonNullable<Proposal["choices"]>>();
+    for (const c of p.choices ?? []) m.set(c.group || "Choices", [...(m.get(c.group || "Choices") ?? []), c]);
+    return [...m.entries()];
+  }, [p.choices]);
+  const pending = p.status === "pending";
+  const on = new Set(closeChoices(p, picked));
+  const toggle = (key: string, v: boolean) => setPicked(v ? [...picked, key] : picked.filter((k) => k !== key));
+  return (
+    <div className="mt-2 space-y-2">
+      {groups.map(([g, list]) => (
+        <fieldset key={g} className="rounded-xl border border-[var(--border)] p-2">
+          <legend className="flex items-center gap-2 px-1 text-xs font-semibold">
+            {g} <span className="muted font-normal">{list.filter((c) => on.has(c.key)).length}/{list.length}</span>
+            {pending && list.length > 2 && (
+              <>
+                <button type="button" className="text-[var(--accent)] font-normal" onClick={() => setPicked([...new Set([...picked, ...list.map((c) => c.key)])])}>
+                  all
+                </button>
+                <button type="button" className="text-[var(--accent)] font-normal" onClick={() => setPicked(picked.filter((k) => !list.some((c) => c.key === k)))}>
+                  none
+                </button>
+              </>
+            )}
+          </legend>
+          <ul className="space-y-1">
+            {list.map((c) => {
+              const blocked = (c.requires ?? []).some((r) => !on.has(r));
+              return (
+                <li key={c.key}>
+                  <label className={`flex items-start gap-2 text-sm ${blocked ? "opacity-50" : ""}`}>
+                    <input type="checkbox" className="mt-1" disabled={!pending || blocked} checked={on.has(c.key)} onChange={(e) => toggle(c.key, e.target.checked)} />
+                    <span className="min-w-0">
+                      {c.label}
+                      {c.detail && <span className="block text-xs muted">{c.detail}</span>}
+                      {blocked && pending && <span className="block text-xs muted">Needs the link it depends on.</span>}
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        </fieldset>
+      ))}
     </div>
   );
 }

@@ -17,6 +17,7 @@ import { ChatLauncher } from "./ChatDrawer";
 import { startAutoSync } from "../lib/sync";
 import { startBridge } from "../lib/bridge";
 import { warmGoogle } from "../lib/google";
+import { proposeMissingMigrations } from "../lib/chain";
 import { Icon, type IconName } from "./Icon";
 import { TLink } from "./TLink";
 import { Toaster } from "./ui";
@@ -53,6 +54,7 @@ export function Layout() {
   useGameEngine(snap, today, settings);
   useTimerWatcher();
   useAlerts();
+  useChainSetup();
   useUpdatePrompt();
   useShortcuts();
   useEffect(() => startAutoSync(), []);
@@ -172,6 +174,17 @@ function TimerPill() {
       )}
     </AnimatePresence>
   );
+}
+
+/**
+ * Sets up programmes on engagements that don't have them yet, as Inbox
+ * proposals. Waits a little so a first sync can bring in one another device made.
+ */
+function useChainSetup() {
+  useEffect(() => {
+    const id = setTimeout(() => void proposeMissingMigrations().catch(() => undefined), 15_000);
+    return () => clearTimeout(id);
+  }, []);
 }
 
 /** Logs the session when the countdown ends, including one that ended while the app was closed. */

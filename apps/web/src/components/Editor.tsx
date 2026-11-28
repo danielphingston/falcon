@@ -89,8 +89,9 @@ const nouns: Record<TableName, string> = {
   days: "day",
   achievements: "badge",
   trialBalances: "trial balance",
-  programItems: "programme step",
-  planItems: "work plan step",
+  programItems: "programme item",
+  planItems: "workstep",
+  programmes: "programme",
 };
 
 function recordToValues(table: TableName, r: Record<string, unknown> | null | undefined): FormValues {

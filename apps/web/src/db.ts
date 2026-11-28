@@ -94,6 +94,10 @@ class FalconDB extends Dexie {
     this.version(8).stores({
       proposals: "id, status, createdAt",
     });
+    // Programme (area) → workstep → workpaper (build brief v2).
+    this.version(9).stores({
+      programmes: "id, engagementId",
+    });
   }
 }
 

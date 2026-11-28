@@ -153,6 +153,10 @@ export const formDefs: Record<TableName, FieldDef[]> = {
     { name: "risk", label: "Risk", type: "text", half: true },
     { name: "notes", label: "Our notes", type: "textarea" },
   ],
+  programmes: [
+    { name: "name", label: "Programme (area)", type: "text", required: true, placeholder: "e.g. Revenue" },
+    { name: "tbArea", label: "TB area (for balances)", type: "select", options: [{ value: "", label: "None (process area)" }, ...AREA_IDS.filter((a) => a !== "unmapped" && a !== "general").map((a) => ({ value: a, label: AREAS[a].label }))] },
+  ],
   programItems: [
     { name: "text", label: "Procedure", type: "textarea", required: true },
     { name: "status", label: "Status", type: "select", options: [{ value: "todo", label: "To do" }, { value: "in_progress", label: "In progress" }, { value: "done", label: "Done" }, { value: "na", label: "Not applicable" }], half: true },
