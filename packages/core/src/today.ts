@@ -7,6 +7,8 @@ import type {
   Task,
   WorkPaper,
 } from "./schema";
+import { update, type Ctx } from "./actions";
+import { daysBetween } from "./dates";
 import type { Snapshot } from "./store";
 import { ME, pointOwner } from "./people";
 import { chaseOpen, hasContact } from "./chase";
@@ -49,7 +51,24 @@ export interface TodayView {
 }
 
 /** An open untimed task from an earlier day: it carries forward to today (5.2). */
-export const isCarried = (t: Task, today: string) => t.status !== "done" && !!t.due && t.due < today && !t.dueTime;
+/** An open untimed task from an earlier day, or one carried forward to today. */
+export const isCarried = (t: Task, today: string) => t.status !== "done" && !!t.due && !t.dueTime && (t.due < today || (!!t.carried && t.due === today));
+
+/**
+ * Carry-forward (brief v2 B2): open untimed tasks dated before today move to
+ * today, counting the days carried ("carried ×n"); the first due date is
+ * kept. Run each morning, or on the next open after days without the app
+ * (everything moves once, counting every day). Meetings and calls (timed)
+ * are never carried.
+ */
+export async function carryForward(ctx: Ctx, today: string) {
+  const out = [];
+  for (const t of await ctx.store.list("tasks")) {
+    if (t.deleted || t.status === "done" || !t.due || t.dueTime || t.due >= today) continue;
+    out.push(await update(ctx, "tasks", t.id, { due: today, carried: (t.carried ?? 0) + Math.max(1, daysBetween(t.due, today)), firstDue: t.firstDue ?? t.due }));
+  }
+  return out;
+}
 
 const irlOpen = (r: InfoRequest) => r.status === "pending" || r.status === "partial";
 const wpOpenForReview = (w: WorkPaper) => w.status === "prepared" || w.status === "in_review";

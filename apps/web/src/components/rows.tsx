@@ -78,10 +78,12 @@ export function TaskRow({ task, l, hideEngagement, tag }: { task: Task; l: Looku
       {tag === "past" && !done && <Pill tone="slate">Past</Pill>}
       {tag === "carried" && !done && (
         <>
-          <Pill tone="amber">Carried</Pill>
-          <button className="btn btn-soft btn-sm shrink-0" onClick={moveToday}>
-            Move to today
-          </button>
+          <Pill tone="amber">Carried{task.carried ? ` ×${task.carried}` : ""}</Pill>
+          {task.due && task.due < todayISO() && (
+            <button className="btn btn-soft btn-sm shrink-0" onClick={moveToday}>
+              Move to today
+            </button>
+          )}
         </>
       )}
     </ListItem>

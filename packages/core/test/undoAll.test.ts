@@ -47,7 +47,7 @@ const calls: Record<string, (ids: Ids) => unknown> = {
   create_task: () => ({ title: "Call client", engagement: "falcon", due: "2026-11-25", assignee: "Dev" }),
   update_task: (i) => ({ id: i.task, status: "done", title: "Draft QoE bridge" }),
   create_workpaper: () => ({ engagement: "falcon", ref: "C.1", title: "Net debt", myRole: "preparer", reviewer: "Asha" }),
-  update_workpaper_status: () => ({ workpaper: "B.2", engagement: "falcon", status: "final" }),
+  update_workpaper_status: () => ({ workpaper: "B.2", engagement: "falcon", status: "in_review" }),
   add_review_points: () => ({ workpaper: "B.2", engagement: "falcon", points: ["Check cut-off", "Agree to FS"], assignedTo: "Dev" }),
   update_review_point: (i) => ({ id: i.point, status: "cleared" }),
   add_irl_items: () => ({ engagement: "falcon", requestedFrom: "Priya", items: [{ number: "2.1", description: "FAR" }] }),
@@ -62,7 +62,7 @@ const calls: Record<string, (ids: Ids) => unknown> = {
   update_program_item: (i) => ({ id: i.prog, status: "done", review: "ok", assignee: "Asha" }),
   set_step_inputs: () => ({ engagement: "falcon", steps: [{ step: "1.1", rfi: ["1.1"], notOnRfi: ["GSTR-2B"] }] }),
   add_point_challenges: (i) => ({ pointId: i.point, questions: [{ question: "Have you agreed the TB to the FS?", why: "Completeness" }] }),
-  update_plan_step: (i) => ({ id: i.step, status: "closed", assignee: "Mira", notes: "Done" }),
+  update_plan_step: (i) => ({ id: i.step, status: "wip", assignee: "Mira", notes: "Done" }),
   delete_item: (i) => ({ id: i.task, confirmed: true }),
 };
 

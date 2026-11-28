@@ -18,7 +18,7 @@ import { ChatLauncher } from "./ChatDrawer";
 import { startAutoSync } from "../lib/sync";
 import { startBridge } from "../lib/bridge";
 import { warmGoogle } from "../lib/google";
-import { proposeMissingMigrations } from "../lib/chain";
+import { carryTasksForward, proposeChaseResets, proposeMissingMigrations } from "../lib/chain";
 import { Icon, type IconName } from "./Icon";
 import { TLink } from "./TLink";
 import { Toaster } from "./ui";
@@ -183,10 +183,18 @@ function TimerPill() {
  * proposals. Waits a little so a first sync can bring in one another device made.
  */
 function useChainSetup() {
+  const today = useToday();
   useEffect(() => {
-    const id = setTimeout(() => void proposeMissingMigrations().catch(() => undefined), 15_000);
+    const id = setTimeout(() => {
+      void proposeMissingMigrations().catch(() => undefined);
+      void proposeChaseResets().catch(() => undefined);
+    }, 15_000);
     return () => clearTimeout(id);
   }, []);
+  // Each morning (and on the first open after days away): carry open tasks to today.
+  useEffect(() => {
+    void carryTasksForward(today).catch(() => undefined);
+  }, [today]);
 }
 
 /** Logs the session when the countdown ends, including one that ended while the app was closed. */

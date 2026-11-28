@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { format, parseISO } from "date-fns";
 import { useLiveQuery } from "dexie-react-hooks";
 import { motion, type Variants } from "motion/react";
@@ -9,6 +10,7 @@ import {
   dayBefore,
   formatMinutes,
   isCarried,
+  withoutContact,
   isoWeekKey,
   logChase,
   readinessLabels,
@@ -27,6 +29,7 @@ import { Icon } from "../components/Icon";
 import { QuickAdd } from "../components/QuickAdd";
 import { FollowUpRow, IrlRow, ReviewPointRow, TaskRow, WorkpaperRow, useLookups } from "../components/rows";
 import { AnimatedList, EmptyState, Section } from "../components/ui";
+import { BulkAssign } from "../components/BulkAssign";
 import { act } from "../lib/act";
 import { useSettings, useSnapshot, useTable, useToday } from "../lib/hooks";
 
@@ -53,12 +56,14 @@ export function TodayPage() {
   const today = useToday();
   const settings = useSettings();
   const l = useLookups();
+  const [bulk, setBulk] = useState(false);
   // Two reminders with the same text count once (5.2: duplicate alerts merged).
   const alerts = mergeAlerts((useTable("alerts") ?? []).filter((a) => !a.deleted && !a.fired && a.fireAt.slice(0, 10) <= today));
   if (!snap) return null;
 
   const v = computeToday(snap, today, dayBefore(today));
   const chaseCount = v.chase.reduce((s, g) => s + g.items.length, 0);
+  const unassigned = withoutContact(snap.infoRequests).length;
   const openPoints = (wpId: string) => snap.reviewPoints.filter((p) => p.workpaperId === wpId && p.status !== "cleared").length;
   const nothing =
     !v.overdue.length && !v.dueToday.length && !v.chase.length && !v.toReview.length && !v.pointsToClear.length && !v.assignContact.length && !v.unlocked.length && !v.past.length;
@@ -193,9 +198,20 @@ export function TodayPage() {
         </motion.div>
       )}
 
-      {v.assignContact.length > 0 && (
+      {(v.assignContact.length > 0 || unassigned > 0) && (
         <motion.div variants={rise}>
-          <Section title="Assign a contact" count={v.assignContact.length} icon="send">
+          <Section
+            title="Assign a contact"
+            count={v.assignContact.length}
+            icon="send"
+            action={
+              unassigned > 0 && (
+                <button className="btn btn-soft btn-sm" onClick={() => setBulk(true)}>
+                  {unassigned} unassigned · assign in bulk
+                </button>
+              )
+            }
+          >
             <p className="px-1 pb-1 text-xs muted">Due a chase but nobody to chase: set who has them (Requested from, or the client's person responsible). They aren't counted as chases.</p>
             <AnimatedList>
               {v.assignContact.slice(0, 5).map((r) => (
@@ -292,6 +308,7 @@ export function TodayPage() {
           <RecapCard />
         </motion.div>
       )}
+      <BulkAssign snap={snap} open={bulk} onClose={() => setBulk(false)} />
     </motion.div>
   );
 }

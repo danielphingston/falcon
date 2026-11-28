@@ -2,7 +2,7 @@
  * The app's side of the Programme → Workstep → Workpaper chain: queueing the
  * one-time set-up proposal per engagement (build brief v2 A1).
  */
-import { OverlayStore, StepCloseError, loadSnapshot, planMigration, proposeMigration, updateStep, type Ctx, type PlanItem } from "@falcon/core";
+import { OverlayStore, StepCloseError, carryForward, chaseResets, newId, loadSnapshot, planMigration, proposeMigration, runTool, todayISO, updateStep, type Ctx, type PlanItem } from "@falcon/core";
 import { act } from "./act";
 import { toast } from "./toast";
 import { getSettings, store } from "../db";
@@ -84,4 +84,37 @@ export async function markStepNa(step: PlanItem) {
       duration: 12000,
       actions: [{ label: "Delete it", run: () => void import("@falcon/core").then((m) => act(`${wp.ref} deleted`, (c) => m.remove(c, "workpapers", wp.id))) }],
     });
+}
+
+/**
+ * One-time chase recalculation (brief v2 B1): per engagement whose open RFI
+ * items' chase dates don't follow the cadence, one proposal in the Inbox.
+ * Not asked again for an engagement once proposed (Settings can reset any time).
+ */
+export async function proposeChaseResets(): Promise<number> {
+  const snap = await loadSnapshot(store, { raw: true });
+  const settings = await getSettings();
+  const asked = new Set(snap.proposals.filter((p) => p.tool === "reset_chase_dates").map((p) => p.engagementId));
+  let n = 0;
+  for (const e of snap.engagements) {
+    if (e.status === "closed" || asked.has(e.id) || !chaseResets(snap.infoRequests, settings, e.id).length) continue;
+    const r = await runTool({ store, by: "app", propose: true }, "reset_chase_dates", { engagement: e.id });
+    if (r.proposalId) n++;
+  }
+  if (n) scheduleSync();
+  return n;
+}
+
+/** Moves open untimed tasks from earlier days to today (once a day; undoable). */
+export async function carryTasksForward(today = todayISO()) {
+  // One batch, so Undo puts them all back.
+  const batchId = newId();
+  const moved = await store.transaction(() => carryForward({ store, by: "app", batchId }, today));
+  if (!moved.length) return 0;
+  scheduleSync();
+  toast({
+    message: `${moved.length} open task${moved.length === 1 ? "" : "s"} carried to today`,
+    action: { label: "Undo", run: () => void import("@falcon/core").then(async (m) => (await m.undoBatch(store, batchId), scheduleSync())) },
+  });
+  return moved.length;
 }

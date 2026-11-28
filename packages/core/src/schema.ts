@@ -28,6 +28,8 @@ export const personFields = z.object({
   email: z.string().optional(),
   phone: z.string().optional(),
   notes: z.string().optional(),
+  /** Client contacts: the engagements they belong to (a task or chase on another engagement warns). */
+  engagementIds: z.array(z.string()).optional(),
 });
 
 // ---------- Engagements ----------
@@ -111,6 +113,10 @@ export const taskFields = z.object({
   assigneeId: z.string().optional(),
   notes: z.string().optional(),
   completedAt: isoDateTime.optional(),
+  /** Days this open task has been carried forward to a later day (shown as "carried ×n"). */
+  carried: z.number().int().min(0).optional(),
+  /** The date it was first due, before any carry-forward. */
+  firstDue: isoDate.optional(),
 });
 
 // ---------- Work papers ----------
