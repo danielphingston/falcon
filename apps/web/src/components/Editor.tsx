@@ -33,6 +33,7 @@ import { Checkbox, Pill, Sheet, statusTone } from "./ui";
 import { ReviewChecklist } from "./ReviewChecklist";
 import { ReviewPointsPanel } from "./ReviewPoints";
 import { OpenItemsPanel } from "./OpenItems";
+import { ProceduresPanel } from "./Procedures";
 import { openStepLinks, openWorkpaperForm } from "./WorkpaperForm";
 import { changeStep, markStepNa } from "../lib/chain";
 
@@ -105,6 +106,7 @@ const nouns: Record<TableName, string> = {
   programItems: "programme item",
   planItems: "workstep",
   programmes: "programme",
+  checkSets: "review check set",
 };
 
 function recordToValues(table: TableName, r: Record<string, unknown> | null | undefined): FormValues {
@@ -233,6 +235,7 @@ function Extras({ table, record }: { table: TableName; record: AnyEntity }) {
         </div>
       )}
       {table === "planItems" && <StepWorkpaper item={record as EntityMap["planItems"]} />}
+      {table === "planItems" && <ProceduresPanel step={record as EntityMap["planItems"]} />}
       {table === "planItems" && <StepInputs item={record as EntityMap["planItems"]} />}
       {table === "planItems" && <PlanDetails item={record as EntityMap["planItems"]} />}
       {(table === "infoRequests" || table === "followUps") && (

@@ -230,6 +230,17 @@ export function SettingsPage() {
           </button>
           <ImportAllocation open={importing} onClose={() => setImporting(false)} />
         </Row>
+        <Row label="Review basics" hint="Asked first on every workpaper's guided review, one per line">
+          <textarea
+            className="input min-h-28 text-sm sm:w-80"
+            defaultValue={s.reviewBasics.join("\n")}
+            onBlur={(e) => {
+              const list = e.target.value.split("\n").map((x) => x.trim()).filter(Boolean);
+              if (list.join("|") !== s.reviewBasics.join("|")) void saveSettings({ reviewBasics: list }).then(() => toast({ message: "Review basics saved" }));
+            }}
+            aria-label="Review basics"
+          />
+        </Row>
         <Row label="Sample data" hint="A demo engagement to explore. Undo removes it">
           <button className="btn btn-soft btn-sm" onClick={() => act("Sample data loaded", (ctx) => loadSampleData(ctx))}>
             <Icon name="sparkles" size={14} /> Load

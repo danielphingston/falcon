@@ -45,6 +45,8 @@ class FalconDB extends Dexie {
   firmLearned!: Table<LearnedCheck, string>;
   firmAnswers!: Table<FirmAnswer, string>;
   firmLinks!: Table<{ workpaperId: string; templateId: string | null }, string>;
+  /** Firm-library items kept for a step text (`step:<stepKey>`) or added to one WP (`wp:<id>`). This device only. */
+  firmStepItems!: Table<{ key: string; templateId: string; itemKeys: string[]; at: string }, string>;
   // What AIs did through the MCP bridge, per session. This device only, kept 7
   // days: not synced, not in backups.
   bridgeLog!: Table<BridgeLogEntry, string>;
@@ -97,6 +99,12 @@ class FalconDB extends Dexie {
     // Programme (area) → workstep → workpaper (build brief v2).
     this.version(9).stores({
       programmes: "id, engagementId",
+    });
+    // Review checks kept per step text (guided review scoped to worksteps), and
+    // firm-library items matched to a step (this device only, like firm templates).
+    this.version(10).stores({
+      checkSets: "id, key",
+      firmStepItems: "key",
     });
   }
 }

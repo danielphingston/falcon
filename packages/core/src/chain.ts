@@ -11,7 +11,7 @@
  *   each suggested link, owner change, ref change and new workpaper is a
  *   choice the user ticks in the Inbox. One undo batch.
  */
-import { create, newId, update, type Ctx } from "./actions";
+import { create, newId, remove, update, type Ctx } from "./actions";
 import { inferAreas } from "./audit/reviewAssist";
 import { areaLabel } from "./audit/generate";
 import { cellIds, peopleIndex, ME } from "./people";
@@ -800,4 +800,27 @@ export async function updateStep(ctx: Ctx, id: string, patch: Parameters<typeof 
     if (!DONE.includes(wp.status)) throw new StepCloseError(id, `Step ${s.number || shortTitle(s.text)} closes when its workpaper ${wp.ref} is cleared (it's ${wp.status.replace(/_/g, " ")}).`);
   }
   return update(ctx, "planItems", id, patch);
+}
+
+// ---------- Procedures under a step (A6) ----------
+
+/**
+ * Turns steps into procedures of another step (e.g. 14 "R2C" programme
+ * steps under one Revenue to Collections step): text, why (from the step's
+ * notes) and done carry over; the moved steps are removed (undoable; the
+ * programme items they came from are still kept).
+ */
+export async function moveIntoProcedures(ctx: Ctx, stepIds: string[], targetId: string) {
+  const target = await ctx.store.get("planItems", targetId);
+  if (!target || target.deleted) throw new LinkError("No such target step.");
+
+  const procs = [...(target.procedures ?? [])];
+  for (const id of stepIds) {
+    if (id === targetId) continue;
+    const s = await ctx.store.get("planItems", id);
+    if (!s || s.deleted) continue;
+    procs.push({ id: newId(), text: s.text, why: s.notes?.split("\n")[0], done: legacyStepState(s) === "closed" });
+    await remove(ctx, "planItems", id);
+  }
+  return update(ctx, "planItems", targetId, { procedures: procs });
 }

@@ -166,6 +166,26 @@ export const workpaperFields = z.object({
   adHoc: z.boolean().optional(),
   /** Position in the To review list (drag order); unset = by due date. */
   reviewOrder: z.number().optional(),
+  /**
+   * Guided review answers for everything except firm-library items (those
+   * stay on the device): basics, the step, its checks, procedures, inputs.
+   */
+  reviewAnswers: z
+    .array(
+      z.object({
+        key: z.string(),
+        answer: z.enum(["none", "ok", "flagged", "na"]).default("none"),
+        note: z.string().optional(),
+        /** The preparer's mark on the same item. */
+        prep: z.enum(["done", "not_done"]).optional(),
+        /** Review point raised from this item (⚑). */
+        pointId: z.string().optional(),
+        at: isoDateTime,
+      }),
+    )
+    .optional(),
+  /** When a guided review of this workpaper started. */
+  reviewStartedAt: isoDateTime.optional(),
 });
 
 // ---------- Review points ----------
@@ -357,6 +377,8 @@ export const planItemFields = z.object({
         text: z.string().trim().min(1),
         why: z.string().optional(),
         done: z.boolean().default(false),
+        /** Added as a "check for next time" while reviewing this workpaper (its ref). */
+        addedFromReview: z.string().optional(),
       }),
     )
     .optional(),
@@ -391,6 +413,22 @@ export const programItemFields = z.object({
   order: z.number().default(0),
   /** Superseded: the workstep this item became (kept read-only for the legacy view). */
   migratedToId: z.string().optional(),
+});
+
+// ---------- Review checks per step text (firm level, A8) ----------
+/** The checks a reviewer kept for a workstep, saved by its text so every workpaper / engagement with the step gets them. */
+export const checkSetFields = z.object({
+  /** Normalised step text (see stepKey). */
+  key: z.string(),
+  stepText: z.string(),
+  checks: z.array(
+    z.object({
+      id: z.string(),
+      text: z.string().trim().min(1),
+      why: z.string().optional(),
+      source: z.enum(["step", "history", "ai", "manual"]).default("manual"),
+    }),
+  ),
 });
 
 // ---------- Time ----------
@@ -502,6 +540,7 @@ export const fieldSchemas = {
   programItems: programItemFields,
   planItems: planItemFields,
   programmes: programmeFields,
+  checkSets: checkSetFields,
   proposals: proposalFields,
 } as const;
 
@@ -525,6 +564,7 @@ export const entitySchemas = {
   programItems: programItemFields.extend(base),
   planItems: planItemFields.extend(base),
   programmes: programmeFields.extend(base),
+  checkSets: checkSetFields.extend(base),
   proposals: proposalFields.extend(base),
 } as const;
 
@@ -550,6 +590,7 @@ export type TbLine = TrialBalance["lines"][number];
 export type ProgramItem = EntityMap["programItems"];
 export type PlanItem = EntityMap["planItems"];
 export type Programme = EntityMap["programmes"];
+export type CheckSet = EntityMap["checkSets"];
 export type OpenItem = NonNullable<WorkPaper["openItems"]>[number];
 export type StepProcedure = NonNullable<PlanItem["procedures"]>[number];
 export type Proposal = EntityMap["proposals"];
@@ -568,6 +609,7 @@ export const workTables = [
   "programItems",
   "planItems",
   "programmes",
+  "checkSets",
 ] as const satisfies readonly TableName[];
 
 /** One entry per record change; powers Undo (and later, points). */
@@ -623,6 +665,8 @@ export const settingsSchema = z.object({
   groupNames: z.array(z.string()).default([]),
   /** AI changes that apply without waiting in the Inbox (everything else is proposed). */
   autoApply: z.array(z.enum(["taskDates", "chaseLogs"])).default(["taskDates", "chaseLogs"]),
+  /** The firm-wide basics every guided review starts with (brief v2 A8, decision 8.8). */
+  reviewBasics: z.array(z.string()).default(["Period covered", "Figures agree to BoA / TB", "Sources and RFI items referenced", "Casting and formulas checked", "Conclusion and open items written"]),
 });
 
 /** Settings that follow the user across devices; the rest (theme, Google setup…) stay per device. */
@@ -641,6 +685,7 @@ export const syncedSettingsKeys = [
   "autoApply",
   "myAliases",
   "groupNames",
+  "reviewBasics",
 ] as const satisfies readonly (keyof z.output<typeof settingsSchema>)[];
 export type Settings = z.output<typeof settingsSchema>;
 export const defaultSettings = (): Settings => settingsSchema.parse({});

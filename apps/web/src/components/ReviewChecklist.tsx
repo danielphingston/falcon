@@ -30,6 +30,7 @@ import { useSnapshot } from "../lib/hooks";
 import { wpContext } from "../lib/review";
 import { Icon } from "./Icon";
 import { useTNavigate } from "./TLink";
+import { ScopedReview, hasLinkedSteps } from "./ScopedReview";
 
 const AREA_OPTIONS = (Object.keys(AREAS) as AreaId[]).filter((a) => a !== "unmapped");
 type Review = ProgramItem["review"];
@@ -65,6 +66,14 @@ const PHASE: Record<Step["phase"], string> = { firm: "Firm checklist", learned: 
  * you add is asked again next time.
  */
 export function ReviewChecklist({ wp }: { wp: WorkPaper }) {
+  const snap = useSnapshot();
+  // Covers worksteps: the review is built from them (brief v2 A8); otherwise the area-based checklist below.
+  if (snap && hasLinkedSteps(snap, wp.id)) return <ScopedReview wp={wp} snap={snap} />;
+  return <AreaChecklist wp={wp} />;
+}
+
+/** The area-based checklist, for workpapers that cover no workstep (ad-hoc / not linked yet). */
+function AreaChecklist({ wp }: { wp: WorkPaper }) {
   const snap = useSnapshot();
   const navigate = useTNavigate();
   const [guided, setGuided] = useState(false);

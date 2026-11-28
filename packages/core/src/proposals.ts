@@ -115,6 +115,7 @@ const NOUNS: Record<string, [string, string]> = {
   programItems: ["programme item", "programme items"],
   planItems: ["workstep", "worksteps"],
   programmes: ["programme", "programmes"],
+  checkSets: ["review check set", "review check sets"],
 };
 
 /** "Call client", "RFI 5.10 Bank statements"… */

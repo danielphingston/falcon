@@ -10,7 +10,9 @@ import {
   ME,
   areaLabel,
   chainView,
+  create,
   filterChain,
+  moveIntoProcedures,
   labels,
   programmeView,
   readinessLabels,
@@ -24,7 +26,8 @@ import {
   type Snapshot,
   type StepState,
 } from "@falcon/core";
-import { proposeMigrationFor } from "../lib/chain";
+import { markStepNa, proposeMigrationFor } from "../lib/chain";
+import { act } from "../lib/act";
 import { useSettings, useToday } from "../lib/hooks";
 import { toast } from "../lib/toast";
 import { lakh } from "../lib/review";
@@ -66,6 +69,9 @@ export function ProgrammeTab({ snap, engagementId }: { snap: Snapshot; engagemen
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(JSON.parse(readKey(`prog-collapsed:${engagementId}`) ?? "[]") as string[]));
   const [legacy, setLegacy] = useState(() => readKey("prog-legacy") === "1");
   const [importing, setImporting] = useState(false);
+  // Selecting steps for bulk actions (make them procedures of another step, mark N/A).
+  const [selected, setSelected] = useState<Set<string> | null>(null);
+  const [target, setTarget] = useState("");
   const shown = useMemo(() => filterChain(view, f, snap, settings), [view, f, snap, settings]);
   const tb = snap.trialBalances.find((t) => t.engagementId === engagementId);
   const tbView = useMemo(() => (tb ? programmeView(tb) : null), [tb]);
@@ -187,6 +193,65 @@ export function ProgrammeTab({ snap, engagementId }: { snap: Snapshot; engagemen
         </div>
       )}
 
+      {/* Bulk actions */}
+      {total > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          {selected === null ? (
+            <button className="btn btn-ghost btn-sm" onClick={() => setSelected(new Set())}>
+              Select steps
+            </button>
+          ) : (
+            <div className="card flex w-full flex-wrap items-center gap-2 p-2">
+              <span className="font-semibold">{selected.size} selected</span>
+              <select className="input w-auto max-w-72 py-1 text-sm" value={target} onChange={(ev) => setTarget(ev.target.value)} aria-label="Target step">
+                <option value="">Make them procedures of…</option>
+                {view.programmes.map((g) => (
+                  <optgroup key={g.id} label={g.name}>
+                    {g.steps
+                      .filter((x) => !selected.has(x.step.id))
+                      .map((x) => (
+                        <option key={x.step.id} value={x.step.id}>
+                          {x.step.number ? `${x.step.number} ` : ""}
+                          {shortTitle(x.step.text)}
+                        </option>
+                      ))}
+                  </optgroup>
+                ))}
+              </select>
+              <button
+                className="btn btn-primary btn-sm"
+                disabled={!target || !selected.size}
+                onClick={async () => {
+                  const res = await act(`${selected.size} step${selected.size === 1 ? "" : "s"} moved into procedures`, (ctx) => moveIntoProcedures(ctx, [...selected], target));
+                  if (res) {
+                    setSelected(null);
+                    setTarget("");
+                  }
+                }}
+              >
+                Move
+              </button>
+              <button
+                className="btn btn-soft btn-sm"
+                disabled={!selected.size}
+                onClick={async () => {
+                  for (const id of selected) {
+                    const st = snap.planItems.find((x) => x.id === id);
+                    if (st?.applicable) await markStepNa(st);
+                  }
+                  setSelected(null);
+                }}
+              >
+                Mark N/A
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setSelected(null)}>
+                Done
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Programmes */}
       {!view.programmes.length ? (
         <EmptyState icon="review" title="No programme yet" hint="Import the work plan: each area becomes a programme and each row a workstep. A TB adds balances and trend flags, but isn't needed." />
@@ -195,7 +260,22 @@ export function ProgrammeTab({ snap, engagementId }: { snap: Snapshot; engagemen
       ) : (
         <div className="space-y-3">
           {shown.map((g) => (
-            <ProgrammeSection key={g.id} g={g} snap={snap} open={filtering || !collapsed.has(g.id)} onToggle={() => toggle(g.id)} tb={tbView && g.tbArea ? tbFor(tbView, g.tbArea) : undefined} />
+            <ProgrammeSection
+              key={g.id}
+              g={g}
+              snap={snap}
+              engagementId={engagementId}
+              open={filtering || !collapsed.has(g.id)}
+              onToggle={() => toggle(g.id)}
+              tb={tbView && g.tbArea ? tbFor(tbView, g.tbArea) : undefined}
+              selected={selected}
+              onSelect={(id, on) => {
+                const next = new Set(selected ?? []);
+                if (on) next.add(id);
+                else next.delete(id);
+                setSelected(next);
+              }}
+            />
           ))}
         </div>
       )}
@@ -266,7 +346,38 @@ function tbFor(v: ReturnType<typeof programmeView>, area: string): TbFigures | u
   return { current: plan.current, prior: plan.prior, scope: plan.scope, flags: v.insights.filter((i) => i.area === area && i.status === "flag").map((i) => i.title) };
 }
 
-function ProgrammeSection({ g, snap, open, onToggle, tb }: { g: ChainProgramme; snap: Snapshot; open: boolean; onToggle: () => void; tb?: TbFigures }) {
+function ProgrammeSection({
+  g,
+  snap,
+  engagementId,
+  open,
+  onToggle,
+  tb,
+  selected,
+  onSelect,
+}: {
+  g: ChainProgramme;
+  snap: Snapshot;
+  engagementId: string;
+  open: boolean;
+  onToggle: () => void;
+  tb?: TbFigures;
+  selected: Set<string> | null;
+  onSelect: (id: string, on: boolean) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [text, setText] = useState("");
+  const addStep = async () => {
+    if (!text.trim()) return;
+    const order = Math.max(0, ...snap.planItems.filter((x) => x.engagementId === engagementId).map((x) => x.order)) + 1;
+    const res = await act("Step added", (ctx) =>
+      create(ctx, "planItems", { engagementId, programmeId: g.programme?.id, area: g.name, text: text.trim(), source: "manual", order }),
+    );
+    if (res) {
+      setText("");
+      setAdding(false);
+    }
+  };
   return (
     <section className="card overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2.5">
@@ -301,16 +412,32 @@ function ProgrammeSection({ g, snap, open, onToggle, tb }: { g: ChainProgramme; 
       {open && (
         <div className="divide-y divide-[var(--border)] border-t border-[var(--border)]">
           {g.steps.map((x) => (
-            <StepLine key={x.step.id} x={x} snap={snap} />
+            <StepLine key={x.step.id} x={x} snap={snap} selected={selected ? selected.has(x.step.id) : undefined} onSelect={(on) => onSelect(x.step.id, on)} />
           ))}
           {!g.steps.length && <p className="px-3 py-2 text-sm muted">No steps.</p>}
+          {g.programme &&
+            (adding ? (
+              <div className="flex gap-2 px-3 py-2">
+                <input className="input flex-1" autoFocus placeholder="New step, e.g. Revenue to Collections – map monthly revenue collected to bank" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void addStep()} aria-label="New step" />
+                <button className="btn btn-primary btn-sm" disabled={!text.trim()} onClick={() => void addStep()}>
+                  Add
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setAdding(false)}>
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button className="w-full px-3 py-2 text-left text-xs text-[var(--accent)]" onClick={() => setAdding(true)}>
+                + Step
+              </button>
+            ))}
         </div>
       )}
     </section>
   );
 }
 
-function StepLine({ x, snap }: { x: ChainStep; snap: Snapshot }) {
+function StepLine({ x, snap, selected, onSelect }: { x: ChainStep; snap: Snapshot; selected?: boolean; onSelect: (on: boolean) => void }) {
   const s = x.step;
   const [first, ...rest] = s.text.split("\n");
   const prep = x.wp?.preparerId ? snap.people.find((p) => p.id === x.wp!.preparerId)?.name : undefined;
@@ -318,6 +445,7 @@ function StepLine({ x, snap }: { x: ChainStep; snap: Snapshot }) {
   const off = x.state === "na";
   return (
     <div className={`flex items-start gap-3 px-3 py-2.5 ${off ? "opacity-50" : ""}`}>
+      {selected !== undefined && <input type="checkbox" className="mt-1" checked={selected} onChange={(e) => onSelect(e.target.checked)} aria-label={`Select ${s.number || shortTitle(s.text)}`} />}
       <Pill tone={STATE_TONE[x.state]}>{stepStateLabels[x.state]}</Pill>
       <button className="min-w-0 flex-1 text-left" onClick={() => openEditor({ table: "planItems", id: s.id })}>
         <p className={`text-sm ${x.state === "closed" ? "muted" : ""}`}>
